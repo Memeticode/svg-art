@@ -13,6 +13,7 @@ import { applyArtDirectionPenalty } from '@/art/postFilter';
 import { clonePrimitiveState } from '@/geometry/primitiveState';
 import { agentCountForViewport } from '@/shared/perf';
 import { clamp } from '@/shared/math';
+import { createMotifMemory } from './motifMemory';
 
 let nextId = 0;
 
@@ -135,6 +136,7 @@ export function spawnAgent(
     emphasisTimer: 0,
     staggerProfile: generateStaggerProfile(rng.fork(id + '-stagger')),
     macroFormType,
+    memory: createMotifMemory(),
   };
 }
 

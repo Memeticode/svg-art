@@ -10,11 +10,9 @@ import { easeInOutSine } from '@/shared/easing';
 import { staggeredInterpolatePrimitiveState } from '@/geometry/stateInterpolation';
 import { applyMicroDeform } from '@/geometry/stateMutation';
 import { clampPrimitiveState } from '@/geometry/constraints';
-import { createMotifState } from '@/art/motifFactories';
-import { createMacroFormState, pickMacroFormType } from '@/art/macroFormFactories';
-import { applyArtDirectionPenalty } from '@/art/postFilter';
-import { pickNextFamily } from '@/art/designRules';
-import { generateStaggerProfile } from './agentSpawner';
+import { evaluateIconScore, computeDestabilization, applyImpulse } from '@/art/antiIconEvaluator';
+import { accumulateMemory } from './motifMemory';
+import { applyTargetDrift, applySoftReseed } from './targetDrift';
 
 export function updateAgent(
   agent: MorphAgent,
@@ -156,90 +154,29 @@ export function updateAgent(
     agent.opacity *= 1 - quietFactor * artDirection.quietBasinStrength * 0.5;
   }
 
-  // ── Morph progression ──
+  // ── Accumulate structural memory ──
+  accumulateMemory(agent.memory, sample, dt, agent.currentState);
+
+  // ── Morph progression (soft reseed at ~85%) ──
   agent.morphProgress += dt / agent.morphDurationSec;
   agent.reseedCooldownSec = Math.max(0, agent.reseedCooldownSec - dt);
 
-  if (agent.morphProgress >= 1.0) {
-    agent.morphProgress = 1.0;
-
-    // Reseed if cooldown expired
-    if (agent.reseedCooldownSec <= 0) {
-      // Family echo: boost weights for families common among neighbors
-      let effectiveWeights = preset.motifWeights;
-      if (neighbors && neighbors.length > 1) {
-        const familyCounts: Partial<Record<string, number>> = {};
-        for (const n of neighbors) {
-          if (n.id === agent.id) continue;
-          familyCounts[n.family] = (familyCounts[n.family] ?? 0) + 1;
-        }
-        const nCount = neighbors.length - 1;
-        if (nCount > 0) {
-          effectiveWeights = { ...preset.motifWeights };
-          for (const [fam, count] of Object.entries(familyCounts)) {
-            const ratio = (count ?? 0) / nCount;
-            if (ratio > 0.4) {
-              // Strong local consensus — boost that family
-              effectiveWeights[fam as keyof typeof effectiveWeights] =
-                ((effectiveWeights[fam as keyof typeof effectiveWeights] ?? 1.0) as number) * (1 + ratio);
-            }
-          }
-        }
-      }
-
-      const nextFamily = pickNextFamily(
-        agent.family,
-        sample.region,
-        rng.fork(agent.id + '-reseed-' + Math.floor(timeSec)),
-        effectiveWeights,
-      );
-
-      agent.sourceState = agent.targetState;
-      agent.family = nextFamily;
-
-      let newTarget: typeof agent.targetState;
-      if (isGhost) {
-        // Ghost agents reseed with macro-form factories
-        const newMacroType = pickMacroFormType(
-          rng.fork(agent.id + '-macro-' + Math.floor(timeSec)),
-          sample.flow,
-          sample.region,
-        );
-        agent.macroFormType = newMacroType;
-        newTarget = createMacroFormState(newMacroType, {
-          rng: rng.fork(agent.id + '-target-' + Math.floor(timeSec)),
-          region: sample.region,
-          flow: sample.flow,
-          depthBand: agent.depthBand,
-          energy: agent.energy,
-        });
-      } else {
-        newTarget = createMotifState(nextFamily, {
-          rng: rng.fork(agent.id + '-target-' + Math.floor(timeSec)),
-          region: sample.region,
-          flow: sample.flow,
-          depthBand: agent.depthBand,
-          energy: agent.energy,
-        });
-        if (artDirection) {
-          newTarget = applyArtDirectionPenalty(newTarget, artDirection);
-        }
-      }
-      agent.targetState = newTarget;
-
-      agent.morphProgress = 0;
-      agent.morphDurationSec = rng.float(
-        preset.morphDurationRange[0],
-        preset.morphDurationRange[1],
-      ) / bandConfig.morphRateMultiplier;
-      agent.reseedCooldownSec = agent.morphDurationSec * 0.8;
-
-      // Generate new stagger profile for this morph cycle
-      agent.staggerProfile = generateStaggerProfile(
-        rng.fork(agent.id + '-stagger-' + Math.floor(timeSec)),
-      );
-    }
+  const softReseedAt = artDirection?.softReseedThreshold ?? 0.85;
+  if (agent.morphProgress >= softReseedAt && agent.reseedCooldownSec <= 0) {
+    applySoftReseed(agent, timeSec, sampler, preset, rng, neighbors, artDirection);
+  } else if (agent.morphProgress > 1.0) {
+    agent.morphProgress = 1.0; // cap, cooldown still active
   }
+
+  // ── Continuous target drift ──
+  applyTargetDrift(agent.targetState, {
+    flow: sample.flow,
+    region: sample.region,
+    memory: agent.memory,
+    dt,
+    phase: agent.phase,
+    energy: agent.energy,
+  });
 
   // ── Derive current interpolated state (staggered per-slot) ──
   const easedProgress = easeInOutSine(clamp(agent.morphProgress, 0, 1));
@@ -250,11 +187,29 @@ export function updateAgent(
     agent.staggerProfile,
   );
 
-  // Apply micro-deformations (suppressed for ghosts), with directional bias from field
+  // ── Anti-icon evaluation and destabilization ──
+  if (artDirection) {
+    const iconScore = evaluateIconScore(interpolated, agent.memory);
+    const impulse = computeDestabilization(iconScore, agent.memory, artDirection);
+    if (impulse) {
+      interpolated = applyImpulse(interpolated, impulse);
+      agent.memory.driftAccumulator += impulse.forceStrength * dt;
+    }
+  }
+
+  // ── Micro-deformations with memory-enhanced directional bias ──
   const deformIntensity = isGhost ? 0.2 : (0.8 + agent.energy * 0.5);
-  const deformBias = sample.region.deformationAggression > 0.3
+  const fieldBias = sample.region.deformationAggression > 0.3
     ? { angle: sample.flow.angle, strength: sample.region.deformationAggression * 2.0 }
     : undefined;
+  // Combine field-derived and memory-derived deformation bias
+  const memBiasStrength = agent.memory.forceExposure * 0.5;
+  const deformBias = fieldBias
+    ? { angle: (fieldBias.angle + agent.memory.dominantForceAngle) * 0.5,
+        strength: fieldBias.strength + memBiasStrength }
+    : memBiasStrength > 0.1
+      ? { angle: agent.memory.dominantForceAngle, strength: memBiasStrength }
+      : undefined;
   interpolated = applyMicroDeform(interpolated, {
     turbulence: sample.flow.turbulence,
     phase: agent.phase,

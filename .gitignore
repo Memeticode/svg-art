@@ -23,3 +23,4 @@ vite.config.ts.timestamp-*
 
 # Project-specific
 .claude/
+geometric-interior-living-field/completed

@@ -103,6 +103,9 @@ export const COMPOSITION_PRESETS: Record<string, CompositionPreset> = {
     artDirection: {
       quietBasinStrength: 0.6,
       swirlLegibility: 0.4,
+      identityHalfLife: 12,
+      targetDriftStrength: 0.4,
+      antiIconThreshold: 0.5,
     },
   },
   'resonant-drift': {
@@ -139,6 +142,9 @@ export const COMPOSITION_PRESETS: Record<string, CompositionPreset> = {
     artDirection: {
       swirlLegibility: 0.7,
       regionalDialectStrength: 1.6,
+      identityHalfLife: 8,
+      targetDriftStrength: 0.6,
+      antiIconThreshold: 0.45,
     },
   },
   'fractal-tide': {
@@ -182,6 +188,9 @@ export const COMPOSITION_PRESETS: Record<string, CompositionPreset> = {
       swirlLegibility: 0.8,
       perfectClosurePenalty: 0.8,
       asymmetryBias: 0.7,
+      identityHalfLife: 5,
+      targetDriftStrength: 0.8,
+      antiIconThreshold: 0.4,
     },
   },
   'halo-weather': {
@@ -218,6 +227,9 @@ export const COMPOSITION_PRESETS: Record<string, CompositionPreset> = {
     artDirection: {
       perfectClosurePenalty: 0.6,
       circleActivationCap: 0.25,
+      identityHalfLife: 10,
+      targetDriftStrength: 0.5,
+      antiIconThreshold: 0.4,
     },
   },
   'cathedral-flow': {
@@ -259,6 +271,9 @@ export const COMPOSITION_PRESETS: Record<string, CompositionPreset> = {
       macroFieldPresence: 1.0,
       quietBasinStrength: 0.5,
       deformationLag: 0.6,
+      identityHalfLife: 14,
+      targetDriftStrength: 0.4,
+      antiIconThreshold: 0.5,
     },
   },
 };

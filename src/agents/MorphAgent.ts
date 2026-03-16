@@ -3,6 +3,7 @@
 import type { MotifFamilyId, DepthBandId } from '@/shared/types';
 import type { PrimitiveState } from '@/geometry/primitiveTypes';
 import type { MacroFormType } from '@/art/macroFormFactories';
+import type { MotifMemory } from './motifMemory';
 
 export interface MorphAgent {
   id: string;
@@ -47,6 +48,9 @@ export interface MorphAgent {
 
   // Stagger profile for non-uniform morph interpolation
   staggerProfile: StaggerProfile;
+
+  // Structural memory: accumulated field exposure and identity drift
+  memory: MotifMemory;
 }
 
 /** Per-slot timing offsets for staggered morph interpolation */
