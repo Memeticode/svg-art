@@ -11,6 +11,7 @@ import { createSvgScene } from '@/render/SvgScene';
 import { createSvgPool } from '@/render/SvgPool';
 import { createSvgAgentRenderer } from '@/render/SvgAgentRenderer';
 import { createSvgBackgroundRenderer } from '@/render/SvgBackgroundRenderer';
+import { createDebugOverlays } from '@/render/DebugOverlays';
 import { createAnimationLoop } from './animationLoop';
 import { createResizeHandler } from './resizeObserver';
 import { getPreset, type CompositionPreset } from '@/art/compositionPresets';
@@ -24,6 +25,7 @@ export function createLivingFieldApp(
     preset: presetId = 'resonant-drift',
     container = document.body,
     pauseWhenHidden = true,
+    debugModes,
   } = options;
 
   // ── Initialize core systems ──
@@ -56,6 +58,12 @@ export function createLivingFieldApp(
     initialViewport,
   );
 
+  // ── Debug overlays ──
+  const debugOverlays = createDebugOverlays(scene.svg);
+  if (debugModes && debugModes.length > 0) {
+    debugOverlays.setModes(debugModes);
+  }
+
   // ── Agent system ──
   const agentSystem = createAgentSystem(
     rng.fork('agents'),
@@ -78,6 +86,9 @@ export function createLivingFieldApp(
     // Render
     const snapshots = agentSystem.getSnapshots(viewport);
     agentRenderer.render(snapshots);
+
+    // Debug overlays (no-op when no modes active)
+    debugOverlays.update(agentSystem.agents, sampler, viewport, timeSec);
   }, pauseWhenHidden);
 
   function handleResize(viewport: Viewport): void {
@@ -101,6 +112,7 @@ export function createLivingFieldApp(
     destroy(): void {
       loop.stop();
       resizeHandler.stop();
+      debugOverlays.destroy();
       agentRenderer.destroy();
       bgRenderer.destroy();
       scene.destroy();

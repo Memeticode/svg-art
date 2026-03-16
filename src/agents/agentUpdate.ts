@@ -3,6 +3,7 @@
 import type { MorphAgent } from './MorphAgent';
 import type { FieldSampler } from '@/field/fieldSampler';
 import type { CompositionPreset } from '@/art/compositionPresets';
+import type { ArtDirectionConfig } from '@/art/artDirectionConfig';
 import type { Rng } from '@/shared/rng';
 import { lerp, clamp, angleLerp, RAD2DEG } from '@/shared/math';
 import { easeInOutSine } from '@/shared/easing';
@@ -10,6 +11,8 @@ import { staggeredInterpolatePrimitiveState } from '@/geometry/stateInterpolatio
 import { applyMicroDeform } from '@/geometry/stateMutation';
 import { clampPrimitiveState } from '@/geometry/constraints';
 import { createMotifState } from '@/art/motifFactories';
+import { createMacroFormState, pickMacroFormType } from '@/art/macroFormFactories';
+import { applyArtDirectionPenalty } from '@/art/postFilter';
 import { pickNextFamily } from '@/art/designRules';
 import { generateStaggerProfile } from './agentSpawner';
 
@@ -21,6 +24,7 @@ export function updateAgent(
   preset: CompositionPreset,
   rng: Rng,
   neighbors?: MorphAgent[],
+  artDirection?: ArtDirectionConfig,
 ): void {
   if (!agent.alive) return;
 
@@ -41,17 +45,20 @@ export function updateAgent(
   agent.vx = lerp(agent.vx, sample.flow.vx * speedTarget, response);
   agent.vy = lerp(agent.vy, sample.flow.vy * speedTarget, response);
 
-  // Curl influence — stronger than v1 for visible swirling
-  const curlStrength = sample.flow.curl * 0.008 * bandConfig.speedMultiplier;
+  // Curl influence — driven by art direction swirlLegibility
+  const swirlMul = artDirection ? artDirection.swirlLegibility : 0.6;
+  const curlStrength = sample.flow.curl * (0.008 + swirlMul * 0.012) * bandConfig.speedMultiplier;
   agent.vx += -agent.vy * curlStrength;
   agent.vy += agent.vx * curlStrength;
 
-  // Convergence zone effect: slow down and swell at flow convergence points
+  // Convergence zone effect: slow down, swell, and compress geometry
   if (sample.flow.convergenceZone > 0.5) {
     const convergeFactor = (sample.flow.convergenceZone - 0.5) * 2; // 0..1
     agent.vx *= 1 - convergeFactor * 0.4;
     agent.vy *= 1 - convergeFactor * 0.4;
     agent.scale = lerp(agent.scale, agent.scale * (1 + convergeFactor * 0.1), 0.02);
+    // Convergence compression: squeeze geometry toward convergence point
+    agent.scale = lerp(agent.scale, agent.scale * (1 - convergeFactor * 0.15), 0.01);
   }
 
   // Advance position
@@ -97,6 +104,22 @@ export function updateAgent(
       const avgScale = scaleSum / sameBandCount;
       agent.scale = lerp(agent.scale, avgScale, 0.005);
     }
+
+    // Phase coherence: same-band neighbors drift phase toward local average
+    if (sameBandCount > 0) {
+      let phaseSum = 0;
+      let phaseCount = 0;
+      for (const n of neighbors) {
+        if (n.id === agent.id || n.depthBand !== agent.depthBand) continue;
+        phaseSum += n.phase;
+        phaseCount++;
+      }
+      if (phaseCount > 0) {
+        const avgPhase = phaseSum / phaseCount;
+        const coherenceStrength = sample.region.coherence * 0.03;
+        agent.phase = lerp(agent.phase, avgPhase, coherenceStrength);
+      }
+    }
   }
 
   agent.rotationDeg = lerp(
@@ -126,6 +149,12 @@ export function updateAgent(
     bandConfig.opacityRange[1] * 1.3,
   );
   agent.opacity = lerp(agent.opacity, targetOpacity, 0.02);
+
+  // Quiet basin suppression: reduce opacity in low-magnitude regions
+  if (artDirection && sample.flow.magnitude < 0.3) {
+    const quietFactor = (0.3 - sample.flow.magnitude) / 0.3; // 0..1
+    agent.opacity *= 1 - quietFactor * artDirection.quietBasinStrength * 0.5;
+  }
 
   // ── Morph progression ──
   agent.morphProgress += dt / agent.morphDurationSec;
@@ -167,13 +196,36 @@ export function updateAgent(
 
       agent.sourceState = agent.targetState;
       agent.family = nextFamily;
-      agent.targetState = createMotifState(nextFamily, {
-        rng: rng.fork(agent.id + '-target-' + Math.floor(timeSec)),
-        region: sample.region,
-        flow: sample.flow,
-        depthBand: agent.depthBand,
-        energy: agent.energy,
-      });
+
+      let newTarget: typeof agent.targetState;
+      if (isGhost) {
+        // Ghost agents reseed with macro-form factories
+        const newMacroType = pickMacroFormType(
+          rng.fork(agent.id + '-macro-' + Math.floor(timeSec)),
+          sample.flow,
+          sample.region,
+        );
+        agent.macroFormType = newMacroType;
+        newTarget = createMacroFormState(newMacroType, {
+          rng: rng.fork(agent.id + '-target-' + Math.floor(timeSec)),
+          region: sample.region,
+          flow: sample.flow,
+          depthBand: agent.depthBand,
+          energy: agent.energy,
+        });
+      } else {
+        newTarget = createMotifState(nextFamily, {
+          rng: rng.fork(agent.id + '-target-' + Math.floor(timeSec)),
+          region: sample.region,
+          flow: sample.flow,
+          depthBand: agent.depthBand,
+          energy: agent.energy,
+        });
+        if (artDirection) {
+          newTarget = applyArtDirectionPenalty(newTarget, artDirection);
+        }
+      }
+      agent.targetState = newTarget;
 
       agent.morphProgress = 0;
       agent.morphDurationSec = rng.float(
@@ -198,12 +250,16 @@ export function updateAgent(
     agent.staggerProfile,
   );
 
-  // Apply micro-deformations (suppressed for ghosts)
+  // Apply micro-deformations (suppressed for ghosts), with directional bias from field
   const deformIntensity = isGhost ? 0.2 : (0.8 + agent.energy * 0.5);
+  const deformBias = sample.region.deformationAggression > 0.3
+    ? { angle: sample.flow.angle, strength: sample.region.deformationAggression * 2.0 }
+    : undefined;
   interpolated = applyMicroDeform(interpolated, {
     turbulence: sample.flow.turbulence,
     phase: agent.phase,
     intensity: deformIntensity,
+    deformBias,
   });
 
   // Clamp to safe ranges

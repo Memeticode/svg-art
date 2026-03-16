@@ -201,6 +201,157 @@ export function asymmetricRibPath(
   return `M${lx.toFixed(2)} ${ly.toFixed(2)} Q${lcpx.toFixed(2)} ${lcpy.toFixed(2)} ${baseX.toFixed(2)} ${baseY.toFixed(2)} Q${rcpx.toFixed(2)} ${rcpy.toFixed(2)} ${rx.toFixed(2)} ${ry.toFixed(2)}`;
 }
 
+// ── Tension / deformation path helpers (v2) ──
+
+/** Arc with gap interruptions — broken, incomplete feel */
+export function brokenArcPath(
+  cx: number,
+  cy: number,
+  r: number,
+  startAngle: number,
+  sweep: number,
+  notches: Array<{ at: number; width: number }>,
+): string {
+  if (notches.length === 0) {
+    return arcPath(cx, cy, r, startAngle, startAngle + sweep);
+  }
+
+  // Sort notches by position
+  const sorted = [...notches].sort((a, b) => a.at - b.at);
+  const parts: string[] = [];
+  let cursor = 0; // fractional progress through sweep
+
+  for (const notch of sorted) {
+    const notchStart = notch.at - notch.width * 0.5;
+    const notchEnd = notch.at + notch.width * 0.5;
+
+    if (notchStart > cursor) {
+      // Draw arc segment from cursor to notchStart
+      const a0 = startAngle + sweep * cursor;
+      const a1 = startAngle + sweep * notchStart;
+      const sx = cx + Math.cos(a0) * r;
+      const sy = cy + Math.sin(a0) * r;
+      const ex = cx + Math.cos(a1) * r;
+      const ey = cy + Math.sin(a1) * r;
+      const segSweep = a1 - a0;
+      const largeArc = Math.abs(segSweep) > Math.PI ? 1 : 0;
+      const sweepFlag = segSweep > 0 ? 1 : 0;
+      parts.push(`M${sx.toFixed(2)} ${sy.toFixed(2)} A${r.toFixed(2)} ${r.toFixed(2)} 0 ${largeArc} ${sweepFlag} ${ex.toFixed(2)} ${ey.toFixed(2)}`);
+    }
+    cursor = Math.max(cursor, notchEnd);
+  }
+
+  // Final segment after last notch
+  if (cursor < 1) {
+    const a0 = startAngle + sweep * cursor;
+    const a1 = startAngle + sweep;
+    const sx = cx + Math.cos(a0) * r;
+    const sy = cy + Math.sin(a0) * r;
+    const ex = cx + Math.cos(a1) * r;
+    const ey = cy + Math.sin(a1) * r;
+    const segSweep = a1 - a0;
+    const largeArc = Math.abs(segSweep) > Math.PI ? 1 : 0;
+    const sweepFlag = segSweep > 0 ? 1 : 0;
+    parts.push(`M${sx.toFixed(2)} ${sy.toFixed(2)} A${r.toFixed(2)} ${r.toFixed(2)} 0 ${largeArc} ${sweepFlag} ${ex.toFixed(2)} ${ey.toFixed(2)}`);
+  }
+
+  return parts.join(' ') || `M${cx.toFixed(2)} ${cy.toFixed(2)}`;
+}
+
+/** Self-intersecting looping path — tangled, unresolved knot feel */
+export function loopCrossingPath(
+  cx: number,
+  cy: number,
+  r: number,
+  startAngle: number,
+  loops: number,
+  wobble: number,
+): string {
+  const steps = Math.max(16, loops * 12);
+  const totalSweep = loops * TAU;
+  const parts: string[] = [];
+
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const angle = startAngle + totalSweep * t;
+    // Spiral in and out with wobble to create crossing
+    const rMod = r * (1 + wobble * Math.sin(angle * 2.3) * Math.cos(angle * 1.7));
+    const x = cx + Math.cos(angle) * rMod;
+    const y = cy + Math.sin(angle) * rMod;
+    parts.push(i === 0 ? `M${x.toFixed(2)} ${y.toFixed(2)}` : `L${x.toFixed(2)} ${y.toFixed(2)}`);
+  }
+
+  return parts.join(' ');
+}
+
+/** Partial enclosure with jagged inner edge — eroded shell */
+export function shellFragmentPath(
+  cx: number,
+  cy: number,
+  outerR: number,
+  innerR: number,
+  startAngle: number,
+  sweep: number,
+  raggedEdge: number,
+  steps = 10,
+): string {
+  const endAngle = startAngle + sweep;
+
+  // Outer arc
+  const outer = arcPath(cx, cy, outerR, startAngle, endAngle);
+
+  // Jagged inner edge (reverse direction)
+  const innerParts: string[] = [];
+  const eax = cx + Math.cos(endAngle) * innerR;
+  const eay = cy + Math.sin(endAngle) * innerR;
+  innerParts.push(`L${eax.toFixed(2)} ${eay.toFixed(2)}`);
+
+  for (let i = steps; i >= 0; i--) {
+    const t = i / steps;
+    const angle = startAngle + sweep * t;
+    // Ragged deviation based on deterministic pattern
+    const deviation = raggedEdge * Math.sin(t * 17.3) * Math.cos(t * 11.7);
+    const rr = innerR + deviation;
+    const x = cx + Math.cos(angle) * rr;
+    const y = cy + Math.sin(angle) * rr;
+    innerParts.push(`L${x.toFixed(2)} ${y.toFixed(2)}`);
+  }
+
+  return outer + ' ' + innerParts.join(' ');
+}
+
+/** Organic curved strut with asymmetric curvature — biological feel */
+export function biologicalArmPath(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  thickness: number,
+  asymmetry: number,
+): string {
+  const mx = (x1 + x2) * 0.5;
+  const my = (y1 + y2) * 0.5;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  // Perpendicular direction
+  const px = -dy;
+  const py = dx;
+  const pLen = Math.sqrt(px * px + py * py) || 1;
+  const nx = px / pLen;
+  const ny = py / pLen;
+
+  // Two control points biased asymmetrically
+  const bias1 = thickness * (0.5 + asymmetry * 0.5);
+  const bias2 = thickness * (0.5 - asymmetry * 0.5);
+
+  const cp1x = mx + nx * bias1 - dx * 0.15;
+  const cp1y = my + ny * bias1 - dy * 0.15;
+  const cp2x = mx - nx * bias2 + dx * 0.15;
+  const cp2y = my - ny * bias2 + dy * 0.15;
+
+  return cubicPath(x1, y1, cp1x, cp1y, cp2x, cp2y, x2, y2);
+}
+
 /** Ring path with a gap (arc that doesn't close) */
 export function ringPath(
   cx: number,

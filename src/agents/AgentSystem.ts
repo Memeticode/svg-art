@@ -6,6 +6,8 @@ import type { CompositionPreset } from '@/art/compositionPresets';
 import type { Rng } from '@/shared/rng';
 import type { Viewport } from '@/shared/types';
 import type { PalettePreset } from '@/art/palettePresets';
+import type { ArtDirectionConfig } from '@/art/artDirectionConfig';
+import { resolveArtDirection } from '@/art/artDirectionConfig';
 import { updateAgent } from './agentUpdate';
 import { spawnInitialAgents } from './agentSpawner';
 import { resolveColors } from '@/art/colorResolvers';
@@ -25,12 +27,15 @@ export function createAgentSystem(
   sampler: FieldSampler,
   viewport: Viewport,
 ): AgentSystem {
+  const artDirection: ArtDirectionConfig = resolveArtDirection(preset.artDirection);
+
   let agents = spawnInitialAgents(
     rng.fork('initial-spawn'),
     preset,
     sampler,
     viewport.width,
     viewport.height,
+    artDirection,
   );
 
   const grid = createSpatialGrid();
@@ -40,7 +45,7 @@ export function createAgentSystem(
     grid.rebuild(agents);
     for (const agent of agents) {
       const neighbors = grid.getNeighbors(agent.xNorm, agent.yNorm, NEIGHBOR_RADIUS);
-      updateAgent(agent, dt, timeSec, sampler, preset, rng, neighbors);
+      updateAgent(agent, dt, timeSec, sampler, preset, rng, neighbors, artDirection);
     }
   }
 
@@ -81,6 +86,7 @@ export function createAgentSystem(
       sampler,
       vp.width,
       vp.height,
+      artDirection,
     );
   }
 

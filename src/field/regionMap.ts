@@ -14,6 +14,10 @@ export interface RegionSignature {
   stretch: number;
   tempo: number;
   paletteShift: number;
+  /** 0..1 — high = prefer enclosed forms, low = prefer fragmented/open */
+  closureTendency: number;
+  /** 0..1 — how aggressively field forces warp geometry */
+  deformationAggression: number;
 }
 
 export interface RegionMap {
@@ -32,6 +36,8 @@ export function createRegionMap(rng: Rng): RegionMap {
     stretch: createNoiseGenerator(rng.fork('reg-stretch')),
     tempo: createNoiseGenerator(rng.fork('reg-tempo')),
     paletteShift: createNoiseGenerator(rng.fork('reg-palette')),
+    closureTendency: createNoiseGenerator(rng.fork('reg-closure')),
+    deformationAggression: createNoiseGenerator(rng.fork('reg-deform')),
   };
 
   const freq = 0.5; // Low frequency → large, legible soft regions
@@ -52,6 +58,8 @@ export function createRegionMap(rng: Rng): RegionMap {
       stretch: sampleChannel(channels.stretch, xNorm + 31.4, yNorm + 17.8),
       tempo: sampleChannel(channels.tempo, xNorm + 41.2, yNorm + 23.5),
       paletteShift: sampleChannel(channels.paletteShift, xNorm + 53.1, yNorm + 37.9),
+      closureTendency: sampleChannel(channels.closureTendency, xNorm + 61.8, yNorm + 44.2),
+      deformationAggression: sampleChannel(channels.deformationAggression, xNorm + 73.5, yNorm + 51.9),
     };
   }
 

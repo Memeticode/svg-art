@@ -7,6 +7,7 @@ export interface DeformContext {
   turbulence: number; // 0..1 from flow field
   phase: number;      // agent phase
   intensity: number;  // overall deform strength (keep small: 0.5–2.0)
+  deformBias?: { angle: number; strength: number }; // directional bias
 }
 
 /** Apply tiny deformations to a state snapshot — never destructive */
@@ -14,18 +15,22 @@ export function applyMicroDeform(
   state: PrimitiveState,
   ctx: DeformContext,
 ): PrimitiveState {
-  const { turbulence, phase, intensity } = ctx;
+  const { turbulence, phase, intensity, deformBias } = ctx;
   const jitter = turbulence * intensity;
+
+  // Directional bias components (default to uniform if absent)
+  const biasX = deformBias ? Math.cos(deformBias.angle) * deformBias.strength : 0;
+  const biasY = deformBias ? Math.sin(deformBias.angle) * deformBias.strength : 0;
 
   // Deform circle positions and radii slightly
   const circles = state.circles.map((c, i) => {
     if (!c.active) return c;
-    const offset = Math.sin(phase * 2.3 + i * 1.7) * jitter * 1.5;
+    const offset = Math.sin(phase * 2.3 + i * 1.7) * jitter * 1.5 + biasX * jitter;
     const rOff = Math.cos(phase * 1.9 + i * 2.1) * jitter * 0.5;
     return {
       ...c,
       cx: c.cx + offset,
-      cy: c.cy + Math.cos(phase * 1.8 + i * 2.5) * jitter * 1.5,
+      cy: c.cy + Math.cos(phase * 1.8 + i * 2.5) * jitter * 1.5 + biasY * jitter,
       r: clamp(c.r + rOff, 0.1, 50),
     };
   }) as PrimitiveState['circles'];
@@ -44,14 +49,17 @@ export function applyMicroDeform(
       }
     : state.ring;
 
-  // Deform path data numerics slightly
+  // Deform path data numerics slightly, with directional bias
   const paths = state.paths.map((p, i) => {
     if (!p.active) return p;
     const pathJitter = jitter * 0.8;
+    let coordIdx = 0;
     const d = p.d.replace(/-?\d+\.?\d*/g, (match, offset) => {
       const v = parseFloat(match);
       const wobble = Math.sin(phase * 2.1 + i * 3.7 + offset * 0.13) * pathJitter;
-      return (v + wobble).toFixed(2);
+      // Alternate bias between x and y coordinates
+      const bias = (coordIdx++ % 2 === 0) ? biasX * pathJitter * 0.5 : biasY * pathJitter * 0.5;
+      return (v + wobble + bias).toFixed(2);
     });
     return { ...p, d };
   }) as PrimitiveState['paths'];

@@ -6,12 +6,14 @@ import { createLivingFieldApp } from './createLivingFieldApp';
 const params = new URLSearchParams(window.location.search);
 const seed = params.get('seed') ?? `field-${Date.now()}`;
 const preset = params.get('preset') ?? 'resonant-drift';
+const debugParam = params.get('debug');
 
 const app = createLivingFieldApp({
   seed,
   preset,
   container: document.body,
   pauseWhenHidden: true,
+  debugModes: debugParam ? debugParam.split(',').filter(Boolean) as import('@/render/DebugOverlays').DebugMode[] : undefined,
 });
 
 // Expose for developer console access

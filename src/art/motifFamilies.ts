@@ -74,6 +74,43 @@ export const MOTIF_FAMILIES: Record<MotifFamilyId, MotifFamilyDef> = {
     compatibleWith: ['spineRibs', 'unfoldingFan', 'scatterFragment'],
     baseWeight: 1.1,
   },
+
+  // ── Tension grammar families (v2) ──
+  brokenCrescent: {
+    id: 'brokenCrescent',
+    compatibleWith: ['splitCrescent', 'interruptedShell', 'pressureFragment'],
+    baseWeight: 1.1,
+  },
+  splitLobe: {
+    id: 'splitLobe',
+    compatibleWith: ['brokenCrescent', 'unfoldingFan', 'eccentricOrbit'],
+    baseWeight: 1.0,
+  },
+  ribbedSpine: {
+    id: 'ribbedSpine',
+    compatibleWith: ['spineRibs', 'kinkedSpine', 'driftingTendril'],
+    baseWeight: 1.2,
+  },
+  interruptedShell: {
+    id: 'interruptedShell',
+    compatibleWith: ['partialEnclosure', 'brokenCrescent', 'pressureFragment'],
+    baseWeight: 1.1,
+  },
+  knotManifold: {
+    id: 'knotManifold',
+    compatibleWith: ['eccentricOrbit', 'splitLobe', 'driftingTendril'],
+    baseWeight: 0.9,
+  },
+  pressureFragment: {
+    id: 'pressureFragment',
+    compatibleWith: ['scatterFragment', 'interruptedShell', 'brokenCrescent'],
+    baseWeight: 1.0,
+  },
+  semiBiologicalScaffold: {
+    id: 'semiBiologicalScaffold',
+    compatibleWith: ['ribbedSpine', 'branchStruts', 'knotManifold'],
+    baseWeight: 0.8,
+  },
 };
 
 export const ALL_FAMILY_IDS = Object.keys(MOTIF_FAMILIES) as MotifFamilyId[];

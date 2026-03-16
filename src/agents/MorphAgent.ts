@@ -2,6 +2,7 @@
 
 import type { MotifFamilyId, DepthBandId } from '@/shared/types';
 import type { PrimitiveState } from '@/geometry/primitiveTypes';
+import type { MacroFormType } from '@/art/macroFormFactories';
 
 export interface MorphAgent {
   id: string;
@@ -37,6 +38,9 @@ export interface MorphAgent {
 
   // Cooldown before next morph reseed
   reseedCooldownSec: number;
+
+  // Macro form type (only for ghost agents)
+  macroFormType?: MacroFormType;
 
   // Emphasis pulse: temporary brightness boost
   emphasisTimer: number;

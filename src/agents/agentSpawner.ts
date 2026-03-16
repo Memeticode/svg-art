@@ -4,9 +4,12 @@ import type { Rng } from '@/shared/rng';
 import type { MorphAgent, StaggerProfile } from './MorphAgent';
 import type { CompositionPreset } from '@/art/compositionPresets';
 import type { FieldSampler } from '@/field/fieldSampler';
+import type { ArtDirectionConfig } from '@/art/artDirectionConfig';
 import { ALL_FAMILY_IDS } from '@/art/motifFamilies';
 import { assignDepthBand } from './depthBands';
 import { createMotifState } from '@/art/motifFactories';
+import { createMacroFormState, pickMacroFormType } from '@/art/macroFormFactories';
+import { applyArtDirectionPenalty } from '@/art/postFilter';
 import { clonePrimitiveState } from '@/geometry/primitiveState';
 import { agentCountForViewport } from '@/shared/perf';
 import { clamp } from '@/shared/math';
@@ -50,6 +53,7 @@ export function spawnAgent(
   xNorm?: number,
   yNorm?: number,
   familyHint?: string,
+  artDirection?: ArtDirectionConfig,
 ): MorphAgent {
   const id = `agent-${nextId++}`;
   const x = xNorm ?? rng.float(0.02, 0.98);
@@ -86,11 +90,24 @@ export function spawnAgent(
     energy,
   };
 
-  const sourceState = createMotifState(family, motifCtx);
-  const targetState = createMotifState(family, {
-    ...motifCtx,
-    rng: rng.fork(id + '-target'),
-  });
+  // Ghost agents use dedicated macro-form factories
+  const isGhost = depthBand === 'ghost';
+  const macroFormType = isGhost
+    ? pickMacroFormType(rng.fork(id + '-macro'), sample.flow, sample.region)
+    : undefined;
+
+  let sourceState = isGhost && macroFormType
+    ? createMacroFormState(macroFormType, motifCtx)
+    : createMotifState(family, motifCtx);
+  let targetState = isGhost && macroFormType
+    ? createMacroFormState(macroFormType, { ...motifCtx, rng: rng.fork(id + '-target') })
+    : createMotifState(family, { ...motifCtx, rng: rng.fork(id + '-target') });
+
+  // Apply art direction penalties (circle suppression, closure penalty) — not needed for macro forms
+  if (artDirection && !isGhost) {
+    sourceState = applyArtDirectionPenalty(sourceState, artDirection);
+    targetState = applyArtDirectionPenalty(targetState, artDirection);
+  }
 
   return {
     id,
@@ -117,6 +134,7 @@ export function spawnAgent(
     reseedCooldownSec: 0,
     emphasisTimer: 0,
     staggerProfile: generateStaggerProfile(rng.fork(id + '-stagger')),
+    macroFormType,
   };
 }
 
@@ -128,6 +146,7 @@ export function spawnInitialAgents(
   sampler: FieldSampler,
   viewportWidth: number,
   viewportHeight: number,
+  artDirection?: ArtDirectionConfig,
 ): MorphAgent[] {
   const count = agentCountForViewport(
     viewportWidth,
@@ -142,7 +161,7 @@ export function spawnInitialAgents(
 
   // Phase 1: uniform seed agents
   for (let i = 0; i < uniformCount; i++) {
-    agents.push(spawnAgent(rng.fork(`spawn-${i}`), preset, sampler, 0));
+    agents.push(spawnAgent(rng.fork(`spawn-${i}`), preset, sampler, 0, undefined, undefined, undefined, artDirection));
   }
 
   // Phase 2: cluster-spawned agents near existing ones
@@ -158,7 +177,7 @@ export function spawnInitialAgents(
     const y = clamp(attractor.yNorm + Math.sin(angle) * dist, -0.05, 1.05);
 
     agents.push(
-      spawnAgent(rng.fork(`spawn-${i}`), preset, sampler, 0, x, y, attractor.family),
+      spawnAgent(rng.fork(`spawn-${i}`), preset, sampler, 0, x, y, attractor.family, artDirection),
     );
   }
 

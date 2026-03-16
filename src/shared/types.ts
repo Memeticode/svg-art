@@ -21,7 +21,14 @@ export type MotifFamilyId =
   | 'eccentricOrbit'
   | 'unfoldingFan'
   | 'scatterFragment'
-  | 'driftingTendril';
+  | 'driftingTendril'
+  | 'brokenCrescent'
+  | 'splitLobe'
+  | 'ribbedSpine'
+  | 'interruptedShell'
+  | 'knotManifold'
+  | 'pressureFragment'
+  | 'semiBiologicalScaffold';
 
 /** Resolved color pair for an agent */
 export interface ResolvedColorway {
