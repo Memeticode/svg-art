@@ -12,6 +12,8 @@ export interface FlowSample {
   curl: number;
   turbulence: number;
   pressure: number;
+  /** 0..1 — how strongly this point is a convergence zone (flows meeting) */
+  convergenceZone: number;
 }
 
 export interface FlowField {
@@ -32,7 +34,7 @@ export interface FlowFieldConfig {
 const DEFAULT_CONFIG: FlowFieldConfig = {
   baseFrequency: 1.8,
   timeScale: 0.04,
-  magnitudeScale: 1.0,
+  magnitudeScale: 1.4,
   curlEpsilon: 0.01,
 };
 
@@ -98,7 +100,23 @@ export function createFlowField(
     const vx = Math.cos(angle) * magnitude;
     const vy = Math.sin(angle) * magnitude;
 
-    return { angle, magnitude, vx, vy, curl, turbulence, pressure };
+    // Convergence zone: detect pressure gradient (where pressure drops sharply)
+    const pRight = noiseMag.sample(
+      (xNorm + eps * 2) * freq * 0.4 + t * 0.05,
+      yNorm * freq * 0.4 + t * 0.05,
+    ) * 0.5 + 0.5;
+    const pDown = noiseMag.sample(
+      xNorm * freq * 0.4 + t * 0.05,
+      (yNorm + eps * 2) * freq * 0.4 + t * 0.05,
+    ) * 0.5 + 0.5;
+    const pressureGradient = Math.sqrt(
+      (pRight - pressure) * (pRight - pressure) +
+      (pDown - pressure) * (pDown - pressure),
+    ) / (eps * 2);
+    // Normalize: high gradient = convergence zone
+    const convergenceZone = Math.min(1, pressureGradient * 0.15);
+
+    return { angle, magnitude, vx, vy, curl, turbulence, pressure, convergenceZone };
   }
 
   return { sample };

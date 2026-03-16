@@ -21,18 +21,41 @@ export function pickNextFamily(
     return currentFamily;
   }
 
-  // Otherwise, bias toward compatible families
+  // Otherwise, bias toward compatible families with strong regional shaping
   const candidates = ALL_FAMILY_IDS.filter(id => id !== currentFamily);
   return rng.weightedPick(candidates, (id) => {
     let weight = familyWeights[id] ?? 1.0;
     if (def.compatibleWith.includes(id)) weight *= 2.5;
-    // Region biases
-    if (region.circularity > 0.6 && (id === 'interruptedHalo' || id === 'radialCluster' || id === 'partialEnclosure')) {
-      weight *= 1.3;
+
+    // ── Multiplicative regional morphology biases ──
+
+    // High circularity: favor halos/orbits, suppress linear forms
+    if (region.circularity > 0.6) {
+      if (id === 'interruptedHalo' || id === 'eccentricOrbit') weight *= 2.0;
+      if (id === 'partialEnclosure' || id === 'radialCluster') weight *= 1.5;
+      if (id === 'kinkedSpine' || id === 'driftingTendril') weight *= 0.3;
     }
-    if (region.linearity > 0.6 && (id === 'spineRibs' || id === 'branchStruts')) {
-      weight *= 1.3;
+
+    // High linearity: favor spines/tendrils, suppress orbital forms
+    if (region.linearity > 0.6) {
+      if (id === 'spineRibs' || id === 'driftingTendril' || id === 'kinkedSpine') weight *= 2.0;
+      if (id === 'branchStruts') weight *= 1.5;
+      if (id === 'orbitalNodes') weight *= 0.3;
     }
+
+    // High fragmentation: favor scatter/kink, suppress cohesive forms
+    if (region.fragmentation > 0.6) {
+      if (id === 'scatterFragment' || id === 'kinkedSpine') weight *= 2.5;
+      if (id === 'radialCluster') weight *= 0.2;
+      if (id === 'partialEnclosure') weight *= 0.4;
+    }
+
+    // High stretch: favor directional fans/tendrils
+    if (region.stretch > 0.6) {
+      if (id === 'unfoldingFan' || id === 'driftingTendril') weight *= 2.0;
+      if (id === 'radialCluster' || id === 'eccentricOrbit') weight *= 0.5;
+    }
+
     return weight;
   });
 }

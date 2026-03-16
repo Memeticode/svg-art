@@ -10,7 +10,8 @@ import type {
   RingPrimitiveState,
 } from './primitiveTypes';
 import { PATH_SLOT_COUNT, CIRCLE_SLOT_COUNT } from './primitiveTypes';
-import { lerp } from '@/shared/math';
+import { lerp, clamp } from '@/shared/math';
+import type { StaggerProfile } from '@/agents/MorphAgent';
 
 /** Interpolate two path `d` strings that share the same command structure.
  *  Falls back to source or target if structures don't match. */
@@ -104,5 +105,38 @@ export function interpolatePrimitiveState(
     paths,
     circles,
     ring: lerpRing(a.ring, b.ring, t),
+  };
+}
+
+/** Apply a stagger offset to a global t value.
+ *  The parabolic window (1-t)*t*4 makes stagger strongest at mid-morph,
+ *  preventing artifacts at endpoints. */
+function staggerT(globalT: number, offset: number): number {
+  return clamp(globalT + offset * (1 - globalT) * globalT * 4, 0, 1);
+}
+
+/** Staggered interpolation: each slot morphs at a slightly different rate */
+export function staggeredInterpolatePrimitiveState(
+  a: PrimitiveState,
+  b: PrimitiveState,
+  t: number,
+  profile: StaggerProfile,
+): PrimitiveState {
+  const paths = [] as unknown as PrimitiveState['paths'];
+  for (let i = 0; i < PATH_SLOT_COUNT; i++) {
+    const st = staggerT(t, profile.pathOffsets[i] ?? 0);
+    (paths as PathPrimitiveState[])[i] = lerpPath(a.paths[i], b.paths[i], st);
+  }
+
+  const circles = [] as unknown as PrimitiveState['circles'];
+  for (let i = 0; i < CIRCLE_SLOT_COUNT; i++) {
+    const st = staggerT(t, profile.circleOffsets[i] ?? 0);
+    (circles as CirclePrimitiveState[])[i] = lerpCircle(a.circles[i], b.circles[i], st);
+  }
+
+  return {
+    paths,
+    circles,
+    ring: lerpRing(a.ring, b.ring, staggerT(t, profile.ringOffset)),
   };
 }

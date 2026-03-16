@@ -34,7 +34,7 @@ export function createRegionMap(rng: Rng): RegionMap {
     paletteShift: createNoiseGenerator(rng.fork('reg-palette')),
   };
 
-  const freq = 0.8; // Low frequency → large soft regions
+  const freq = 0.5; // Low frequency → large, legible soft regions
 
   function sampleChannel(noise: NoiseGenerator, x: number, y: number): number {
     const raw = noise.warp(x * freq, y * freq, 2, 2.0, 0.5);

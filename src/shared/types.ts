@@ -5,8 +5,8 @@ export interface Vec2 {
   y: number;
 }
 
-/** Depth band identifiers, back-to-front */
-export type DepthBandId = 'back' | 'mid' | 'front';
+/** Depth band identifiers, back-to-front (ghost = macro field structures) */
+export type DepthBandId = 'ghost' | 'back' | 'mid' | 'front';
 
 /** Motif family identifiers */
 export type MotifFamilyId =
@@ -16,7 +16,12 @@ export type MotifFamilyId =
   | 'splitCrescent'
   | 'branchStruts'
   | 'orbitalNodes'
-  | 'partialEnclosure';
+  | 'partialEnclosure'
+  | 'kinkedSpine'
+  | 'eccentricOrbit'
+  | 'unfoldingFan'
+  | 'scatterFragment'
+  | 'driftingTendril';
 
 /** Resolved color pair for an agent */
 export interface ResolvedColorway {

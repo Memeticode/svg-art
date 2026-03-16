@@ -4,13 +4,14 @@ import type { MorphAgent } from './MorphAgent';
 import type { FieldSampler } from '@/field/fieldSampler';
 import type { CompositionPreset } from '@/art/compositionPresets';
 import type { Rng } from '@/shared/rng';
-import { lerp, clamp, angleLerp, wrapAngle, RAD2DEG } from '@/shared/math';
+import { lerp, clamp, angleLerp, RAD2DEG } from '@/shared/math';
 import { easeInOutSine } from '@/shared/easing';
-import { interpolatePrimitiveState } from '@/geometry/stateInterpolation';
+import { staggeredInterpolatePrimitiveState } from '@/geometry/stateInterpolation';
 import { applyMicroDeform } from '@/geometry/stateMutation';
 import { clampPrimitiveState } from '@/geometry/constraints';
 import { createMotifState } from '@/art/motifFactories';
 import { pickNextFamily } from '@/art/designRules';
+import { generateStaggerProfile } from './agentSpawner';
 
 export function updateAgent(
   agent: MorphAgent,
@@ -19,11 +20,13 @@ export function updateAgent(
   sampler: FieldSampler,
   preset: CompositionPreset,
   rng: Rng,
+  neighbors?: MorphAgent[],
 ): void {
   if (!agent.alive) return;
 
   const sample = sampler.sample(agent.xNorm, agent.yNorm, timeSec);
   const bandConfig = preset.depthBands[agent.depthBand];
+  const isGhost = agent.depthBand === 'ghost';
 
   // ── Motion ──
   const speedTarget = lerp(
@@ -32,32 +35,74 @@ export function updateAgent(
     sample.flow.magnitude,
   ) * bandConfig.speedMultiplier;
 
-  // Smooth velocity blending (inertia)
-  const response = clamp(0.02 + sample.region.coherence * 0.03, 0.01, 0.08);
+  // Ghost agents have much softer velocity response (halved)
+  const baseResponse = clamp(0.02 + sample.region.coherence * 0.03, 0.01, 0.08);
+  const response = isGhost ? baseResponse * 0.5 : baseResponse;
   agent.vx = lerp(agent.vx, sample.flow.vx * speedTarget, response);
   agent.vy = lerp(agent.vy, sample.flow.vy * speedTarget, response);
 
-  // Add subtle curl influence
-  const curlStrength = sample.flow.curl * 0.003 * bandConfig.speedMultiplier;
+  // Curl influence — stronger than v1 for visible swirling
+  const curlStrength = sample.flow.curl * 0.008 * bandConfig.speedMultiplier;
   agent.vx += -agent.vy * curlStrength;
   agent.vy += agent.vx * curlStrength;
+
+  // Convergence zone effect: slow down and swell at flow convergence points
+  if (sample.flow.convergenceZone > 0.5) {
+    const convergeFactor = (sample.flow.convergenceZone - 0.5) * 2; // 0..1
+    agent.vx *= 1 - convergeFactor * 0.4;
+    agent.vy *= 1 - convergeFactor * 0.4;
+    agent.scale = lerp(agent.scale, agent.scale * (1 + convergeFactor * 0.1), 0.02);
+  }
 
   // Advance position
   agent.xNorm += agent.vx * dt;
   agent.yNorm += agent.vy * dt;
 
-  // Soft wrap: when an agent leaves the viewport, reposition it on the opposite side
-  if (agent.xNorm < -0.05) agent.xNorm = 1.05;
-  else if (agent.xNorm > 1.05) agent.xNorm = -0.05;
-  if (agent.yNorm < -0.05) agent.yNorm = 1.05;
-  else if (agent.yNorm > 1.05) agent.yNorm = -0.05;
+  // Soft wrap — ghosts allowed further offscreen (partial offscreen forms)
+  const wrapMargin = isGhost ? 0.15 : 0.05;
+  if (agent.xNorm < -wrapMargin) agent.xNorm = 1 + wrapMargin;
+  else if (agent.xNorm > 1 + wrapMargin) agent.xNorm = -wrapMargin;
+  if (agent.yNorm < -wrapMargin) agent.yNorm = 1 + wrapMargin;
+  else if (agent.yNorm > 1 + wrapMargin) agent.yNorm = -wrapMargin;
 
   // ── Heading and rotation ──
-  agent.heading = angleLerp(agent.heading, sample.flow.angle, response * 0.5);
+  // Crisper heading response for visible current-following
+  agent.heading = angleLerp(agent.heading, sample.flow.angle, response * 0.8);
+
+  // ── Neighbor influence ──
+  if (neighbors && neighbors.length > 1 && !isGhost) {
+    // Heading alignment: blend toward local average heading, modulated by coherence
+    let sinSum = 0;
+    let cosSum = 0;
+    let sameBandCount = 0;
+    let scaleSum = 0;
+    for (const n of neighbors) {
+      if (n.id === agent.id) continue;
+      sinSum += Math.sin(n.heading);
+      cosSum += Math.cos(n.heading);
+      if (n.depthBand === agent.depthBand) {
+        scaleSum += n.scale;
+        sameBandCount++;
+      }
+    }
+    const neighborCount = neighbors.length - 1;
+    if (neighborCount > 0) {
+      const avgHeading = Math.atan2(sinSum / neighborCount, cosSum / neighborCount);
+      const alignStrength = sample.region.coherence * 0.15;
+      agent.heading = angleLerp(agent.heading, avgHeading, alignStrength);
+    }
+
+    // Scale harmony: drift toward local median among same-depth-band neighbors
+    if (sameBandCount > 0) {
+      const avgScale = scaleSum / sameBandCount;
+      agent.scale = lerp(agent.scale, avgScale, 0.005);
+    }
+  }
+
   agent.rotationDeg = lerp(
     agent.rotationDeg,
     agent.heading * RAD2DEG,
-    0.01,
+    isGhost ? 0.005 : 0.015,
   );
 
   // ── Phase and energy ──
@@ -65,12 +110,20 @@ export function updateAgent(
   agent.energy = lerp(agent.energy, 0.3 + sample.flow.magnitude * 0.4 + sample.region.brightness * 0.2, 0.01);
   agent.ageSec += dt;
 
-  // ── Opacity: gentle breathing ──
+  // ── Emphasis pulse system ──
+  agent.emphasisTimer = Math.max(0, agent.emphasisTimer - dt);
+  if (agent.emphasisTimer <= 0 && agent.energy > 0.7 && sample.region.brightness > 0.6 && !isGhost) {
+    // Trigger emphasis: 2-4 second bright pulse
+    agent.emphasisTimer = 2 + rng.next() * 2;
+  }
+  const emphasisBoost = agent.emphasisTimer > 0 ? 0.15 * Math.sin(agent.emphasisTimer * 0.8) : 0;
+
+  // ── Opacity: gentle breathing + emphasis ──
   const breathe = Math.sin(agent.phase * 0.4) * 0.05;
   const targetOpacity = clamp(
-    lerp(bandConfig.opacityRange[0], bandConfig.opacityRange[1], agent.energy) + breathe,
+    lerp(bandConfig.opacityRange[0], bandConfig.opacityRange[1], agent.energy) + breathe + emphasisBoost,
     bandConfig.opacityRange[0] * 0.5,
-    bandConfig.opacityRange[1] * 1.2,
+    bandConfig.opacityRange[1] * 1.3,
   );
   agent.opacity = lerp(agent.opacity, targetOpacity, 0.02);
 
@@ -83,11 +136,33 @@ export function updateAgent(
 
     // Reseed if cooldown expired
     if (agent.reseedCooldownSec <= 0) {
+      // Family echo: boost weights for families common among neighbors
+      let effectiveWeights = preset.motifWeights;
+      if (neighbors && neighbors.length > 1) {
+        const familyCounts: Partial<Record<string, number>> = {};
+        for (const n of neighbors) {
+          if (n.id === agent.id) continue;
+          familyCounts[n.family] = (familyCounts[n.family] ?? 0) + 1;
+        }
+        const nCount = neighbors.length - 1;
+        if (nCount > 0) {
+          effectiveWeights = { ...preset.motifWeights };
+          for (const [fam, count] of Object.entries(familyCounts)) {
+            const ratio = (count ?? 0) / nCount;
+            if (ratio > 0.4) {
+              // Strong local consensus — boost that family
+              effectiveWeights[fam as keyof typeof effectiveWeights] =
+                ((effectiveWeights[fam as keyof typeof effectiveWeights] ?? 1.0) as number) * (1 + ratio);
+            }
+          }
+        }
+      }
+
       const nextFamily = pickNextFamily(
         agent.family,
         sample.region,
         rng.fork(agent.id + '-reseed-' + Math.floor(timeSec)),
-        preset.motifWeights,
+        effectiveWeights,
       );
 
       agent.sourceState = agent.targetState;
@@ -106,22 +181,29 @@ export function updateAgent(
         preset.morphDurationRange[1],
       ) / bandConfig.morphRateMultiplier;
       agent.reseedCooldownSec = agent.morphDurationSec * 0.8;
+
+      // Generate new stagger profile for this morph cycle
+      agent.staggerProfile = generateStaggerProfile(
+        rng.fork(agent.id + '-stagger-' + Math.floor(timeSec)),
+      );
     }
   }
 
-  // ── Derive current interpolated state ──
+  // ── Derive current interpolated state (staggered per-slot) ──
   const easedProgress = easeInOutSine(clamp(agent.morphProgress, 0, 1));
-  let interpolated = interpolatePrimitiveState(
+  let interpolated = staggeredInterpolatePrimitiveState(
     agent.sourceState,
     agent.targetState,
     easedProgress,
+    agent.staggerProfile,
   );
 
-  // Apply micro-deformations
+  // Apply micro-deformations (suppressed for ghosts)
+  const deformIntensity = isGhost ? 0.2 : (0.8 + agent.energy * 0.5);
   interpolated = applyMicroDeform(interpolated, {
     turbulence: sample.flow.turbulence,
     phase: agent.phase,
-    intensity: 0.8 + agent.energy * 0.5,
+    intensity: deformIntensity,
   });
 
   // Clamp to safe ranges

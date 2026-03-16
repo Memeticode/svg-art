@@ -11,40 +11,68 @@ export interface MotifFamilyDef {
 }
 
 export const MOTIF_FAMILIES: Record<MotifFamilyId, MotifFamilyDef> = {
+  // Original families (circles/radial forms rare — low weight)
   radialCluster: {
     id: 'radialCluster',
-    compatibleWith: ['interruptedHalo', 'orbitalNodes'],
-    baseWeight: 1.2,
+    compatibleWith: ['interruptedHalo', 'eccentricOrbit'],
+    baseWeight: 0.6,
   },
   interruptedHalo: {
     id: 'interruptedHalo',
-    compatibleWith: ['radialCluster', 'partialEnclosure'],
+    compatibleWith: ['radialCluster', 'partialEnclosure', 'eccentricOrbit'],
     baseWeight: 1.0,
   },
   spineRibs: {
     id: 'spineRibs',
-    compatibleWith: ['branchStruts', 'splitCrescent'],
+    compatibleWith: ['branchStruts', 'kinkedSpine', 'driftingTendril'],
     baseWeight: 1.0,
   },
   splitCrescent: {
     id: 'splitCrescent',
-    compatibleWith: ['interruptedHalo', 'spineRibs'],
+    compatibleWith: ['interruptedHalo', 'unfoldingFan', 'partialEnclosure'],
     baseWeight: 0.9,
   },
   branchStruts: {
     id: 'branchStruts',
-    compatibleWith: ['spineRibs', 'orbitalNodes'],
+    compatibleWith: ['spineRibs', 'kinkedSpine', 'scatterFragment'],
     baseWeight: 0.8,
   },
   orbitalNodes: {
     id: 'orbitalNodes',
-    compatibleWith: ['radialCluster', 'branchStruts'],
-    baseWeight: 1.0,
+    compatibleWith: ['eccentricOrbit', 'branchStruts'],
+    baseWeight: 0.7,
   },
   partialEnclosure: {
     id: 'partialEnclosure',
-    compatibleWith: ['interruptedHalo', 'splitCrescent'],
-    baseWeight: 0.7,
+    compatibleWith: ['interruptedHalo', 'splitCrescent', 'unfoldingFan'],
+    baseWeight: 0.8,
+  },
+
+  // New asymmetric families
+  kinkedSpine: {
+    id: 'kinkedSpine',
+    compatibleWith: ['spineRibs', 'branchStruts', 'scatterFragment'],
+    baseWeight: 1.1,
+  },
+  eccentricOrbit: {
+    id: 'eccentricOrbit',
+    compatibleWith: ['orbitalNodes', 'interruptedHalo', 'unfoldingFan'],
+    baseWeight: 1.0,
+  },
+  unfoldingFan: {
+    id: 'unfoldingFan',
+    compatibleWith: ['splitCrescent', 'partialEnclosure', 'driftingTendril'],
+    baseWeight: 1.1,
+  },
+  scatterFragment: {
+    id: 'scatterFragment',
+    compatibleWith: ['kinkedSpine', 'branchStruts', 'driftingTendril'],
+    baseWeight: 0.9,
+  },
+  driftingTendril: {
+    id: 'driftingTendril',
+    compatibleWith: ['spineRibs', 'unfoldingFan', 'scatterFragment'],
+    baseWeight: 1.1,
   },
 };
 

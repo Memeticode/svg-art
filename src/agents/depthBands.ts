@@ -4,7 +4,7 @@ import type { DepthBandId } from '@/shared/types';
 import type { DepthBandConfig } from '@/art/compositionPresets';
 import type { Rng } from '@/shared/rng';
 
-const BAND_ORDER: DepthBandId[] = ['back', 'mid', 'front'];
+const BAND_ORDER: DepthBandId[] = ['ghost', 'back', 'mid', 'front'];
 
 /** Assign a depth band based on weighted ratios */
 export function assignDepthBand(

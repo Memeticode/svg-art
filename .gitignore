@@ -22,5 +22,5 @@ dist/
 vite.config.ts.timestamp-*
 
 # Project-specific
-geometric-interior-living-field/
 .claude/
+/geometric-interior-living-field

@@ -9,6 +9,7 @@ import type { PalettePreset } from '@/art/palettePresets';
 import { updateAgent } from './agentUpdate';
 import { spawnInitialAgents } from './agentSpawner';
 import { resolveColors } from '@/art/colorResolvers';
+import { createSpatialGrid } from './spatialGrid';
 
 export interface AgentSystem {
   agents: MorphAgent[];
@@ -32,9 +33,14 @@ export function createAgentSystem(
     viewport.height,
   );
 
+  const grid = createSpatialGrid();
+  const NEIGHBOR_RADIUS = 0.12;
+
   function update(dt: number, timeSec: number): void {
+    grid.rebuild(agents);
     for (const agent of agents) {
-      updateAgent(agent, dt, timeSec, sampler, preset, rng);
+      const neighbors = grid.getNeighbors(agent.xNorm, agent.yNorm, NEIGHBOR_RADIUS);
+      updateAgent(agent, dt, timeSec, sampler, preset, rng, neighbors);
     }
   }
 

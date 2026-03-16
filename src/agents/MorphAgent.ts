@@ -37,6 +37,19 @@ export interface MorphAgent {
 
   // Cooldown before next morph reseed
   reseedCooldownSec: number;
+
+  // Emphasis pulse: temporary brightness boost
+  emphasisTimer: number;
+
+  // Stagger profile for non-uniform morph interpolation
+  staggerProfile: StaggerProfile;
+}
+
+/** Per-slot timing offsets for staggered morph interpolation */
+export interface StaggerProfile {
+  pathOffsets: number[];   // 8 values, range [-0.15, 0.15]
+  circleOffsets: number[]; // 7 values
+  ringOffset: number;
 }
 
 /** Render-ready snapshot consumed by the SVG renderer */

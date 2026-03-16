@@ -1,6 +1,7 @@
 // ── SvgAgentRenderer: applies AgentRenderSnapshots to pooled SVG nodes ──
 
 import type { AgentRenderSnapshot } from '@/agents/MorphAgent';
+import type { DepthBandId } from '@/shared/types';
 import type { SvgScene } from './SvgScene';
 import type { SvgPool, PooledAgentNode } from './SvgPool';
 import type { PrimitiveState } from '@/geometry/primitiveTypes';
@@ -37,6 +38,9 @@ export function createSvgAgentRenderer(
         `scale(${snap.scale.toFixed(3)})`,
       );
       node.group.setAttribute('opacity', snap.opacity.toFixed(3));
+
+      // Apply glow filter based on depth band × opacity thresholds
+      applyGlowFilter(node, snap.depthBand, snap.opacity);
 
       // Apply primitive state to SVG elements
       applyPrimitiveState(node, snap.primitiveState, snap.resolvedStroke, snap.resolvedFill);
@@ -115,6 +119,33 @@ export function createSvgAgentRenderer(
       node.ringPath.setAttribute('stroke', stroke);
       node.ringPath.setAttribute('stroke-width', ring.strokeWidth.toFixed(2));
       node.ringPath.setAttribute('opacity', ring.opacity.toFixed(3));
+    }
+  }
+
+  function applyGlowFilter(node: PooledAgentNode, band: DepthBandId, opacity: number): void {
+    let filterId: string | null = null;
+
+    switch (band) {
+      case 'ghost':
+        filterId = 'glow-subtle';
+        break;
+      case 'back':
+        if (opacity > 0.15) filterId = 'glow-subtle';
+        break;
+      case 'mid':
+        if (opacity > 0.45) filterId = 'glow-medium';
+        else if (opacity > 0.35) filterId = 'glow-subtle';
+        break;
+      case 'front':
+        if (opacity > 0.65) filterId = 'glow-bright';
+        else if (opacity > 0.55) filterId = 'glow-medium';
+        break;
+    }
+
+    if (filterId) {
+      node.group.setAttribute('filter', `url(#${filterId})`);
+    } else {
+      node.group.removeAttribute('filter');
     }
   }
 
