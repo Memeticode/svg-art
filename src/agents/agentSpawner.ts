@@ -70,7 +70,7 @@ export function spawnAgent(
     // Bias toward hint family if provided (cluster coherence)
     if (familyHint && fid === familyHint) w *= 2.0;
     // Regional biases
-    if (sample.region.circularity > 0.6 && (fid === 'interruptedHalo' || fid === 'eccentricOrbit')) w *= 1.3;
+    if (sample.region.circularity > 0.6 && (fid === 'interruptedShell' || fid === 'partialEnclosure')) w *= 1.3;
     if (sample.region.linearity > 0.6 && (fid === 'spineRibs' || fid === 'kinkedSpine' || fid === 'driftingTendril')) w *= 1.3;
     if (sample.region.fragmentation > 0.6 && (fid === 'scatterFragment' || fid === 'kinkedSpine')) w *= 1.5;
     if (sample.region.stretch > 0.6 && (fid === 'unfoldingFan' || fid === 'driftingTendril')) w *= 1.3;

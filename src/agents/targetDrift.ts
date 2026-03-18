@@ -57,48 +57,32 @@ export function applyTargetDrift(target: PrimitiveState, ctx: DriftContext): voi
     };
   }
 
-  // Drift circle positions with phase-based variation
-  for (let i = 0; i < 7; i++) {
-    const c = target.circles[i];
-    if (!c.active) continue;
-    const inertia = memory.slotInertia[8 + i];
-    const circleDrift = flow.turbulence * 0.1 * dt / inertia;
+  // Circles and ring are doctrinally inactive — no drift needed.
 
-    const cxShift = Math.sin(phase * 1.7 + i * 2.3) * circleDrift;
-    const cyShift = Math.cos(phase * 2.1 + i * 1.9) * circleDrift;
-
-    target.circles[i] = {
-      ...c,
-      cx: c.cx + cxShift,
-      cy: c.cy + cyShift,
-    };
-
-    // Closure fatigue: shrink circles when fatigue is high
-    if (memory.closureFatigue > 0.5) {
-      const fatigueDelta = (memory.closureFatigue - 0.5) * 0.1 * dt / inertia;
-      target.circles[i] = {
-        ...target.circles[i],
-        r: Math.max(0.1, target.circles[i].r - fatigueDelta),
-      };
-    }
-
-    // High fragmentation deactivates accent circles (slots 3-6)
-    if (i >= 3 && region.fragmentation > 0.6) {
-      const fragChance = (region.fragmentation - 0.6) * 0.02 * dt;
-      if (fragChance > 0.001 && Math.sin(phase * 3.1 + i * 7.7) > 1 - fragChance * 10) {
-        target.circles[i] = { ...target.circles[i], opacity: target.circles[i].opacity * 0.95 };
+  // Anti-closure path drift: when roundnessFatigue is high, perturb arc-heavy paths
+  const roundnessFatigue = (memory as any).roundnessFatigue ?? 0;
+  if (roundnessFatigue > 0.5) {
+    const antiClosureDrift = (roundnessFatigue - 0.5) * 0.2 * dt;
+    for (let i = 0; i < 8; i++) {
+      const p = target.paths[i];
+      if (!p.active) continue;
+      // Check if path contains arc commands
+      if (/[Aa]/.test(p.d)) {
+        // Shift arc coordinates to break closure
+        let coordIdx = 0;
+        const shearAngle = memory.dominantForceAngle + Math.PI / 2;
+        const shearCos = Math.cos(shearAngle) * antiClosureDrift;
+        const shearSin = Math.sin(shearAngle) * antiClosureDrift;
+        target.paths[i] = {
+          ...p,
+          d: p.d.replace(/-?\d+\.?\d*/g, (match) => {
+            const v = parseFloat(match);
+            const shift = (coordIdx++ % 2 === 0) ? shearCos : shearSin;
+            return (v + shift).toFixed(2);
+          }),
+        };
       }
     }
-  }
-
-  // Ring gap drift from closure fatigue
-  if (target.ring.active && memory.closureFatigue > 0.5) {
-    const ringInertia = memory.slotInertia[15];
-    const gapDrift = (memory.closureFatigue - 0.5) * 0.02 * dt / ringInertia;
-    target.ring = {
-      ...target.ring,
-      gapEnd: target.ring.gapEnd + gapDrift,
-    };
   }
 }
 

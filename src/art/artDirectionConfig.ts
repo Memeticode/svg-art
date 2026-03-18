@@ -1,12 +1,12 @@
 // ── Art direction config: global tuning knobs for visual style ──
 
 export interface ArtDirectionConfig {
-  /** 0..1 — scales down circle radius and fillAlpha */
-  perfectClosurePenalty: number;
+  /** 0..1 — controls how aggressively near-closure paths are broken */
+  closureBreakStrength: number;
   /** 0..1 — penalizes symmetric outputs */
   asymmetryBias: number;
-  /** Max fraction of 7 circle slots allowed active (0.3 ≈ max 2) */
-  circleActivationCap: number;
+  /** Max arc sweep fraction of TAU before forced split (0.0 = no full arcs allowed) */
+  arcClosureCap: number;
   /** Multiplier on region signal influence for family selection */
   regionalDialectStrength: number;
   /** Neighbor family echo strength */
@@ -36,9 +36,9 @@ export interface ArtDirectionConfig {
 }
 
 export const DEFAULT_ART_DIRECTION: ArtDirectionConfig = {
-  perfectClosurePenalty: 0.7,
+  closureBreakStrength: 1.0,
   asymmetryBias: 0.6,
-  circleActivationCap: 0.3,
+  arcClosureCap: 0.0,
   regionalDialectStrength: 1.5,
   clusterCohesion: 0.6,
   swirlLegibility: 0.6,

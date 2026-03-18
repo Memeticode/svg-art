@@ -29,10 +29,10 @@ export function pickNextFamily(
 
     // ── Multiplicative regional morphology biases ──
 
-    // High circularity: favor halos/orbits, suppress linear forms
+    // High circularity: favor shell/enclosure families, suppress linear forms
     if (region.circularity > 0.6) {
-      if (id === 'interruptedHalo' || id === 'eccentricOrbit') weight *= 2.0;
-      if (id === 'partialEnclosure' || id === 'radialCluster') weight *= 1.5;
+      if (id === 'interruptedShell' || id === 'partialEnclosure') weight *= 2.0;
+      if (id === 'brokenCrescent' || id === 'interruptedHalo') weight *= 1.5;
       if (id === 'kinkedSpine' || id === 'driftingTendril') weight *= 0.3;
     }
 

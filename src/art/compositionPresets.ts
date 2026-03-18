@@ -186,7 +186,7 @@ export const COMPOSITION_PRESETS: Record<string, CompositionPreset> = {
     fieldTimeScale: 0.05,
     artDirection: {
       swirlLegibility: 0.8,
-      perfectClosurePenalty: 0.8,
+      closureBreakStrength: 1.0,
       asymmetryBias: 0.7,
       identityHalfLife: 5,
       targetDriftStrength: 0.8,
@@ -225,8 +225,8 @@ export const COMPOSITION_PRESETS: Record<string, CompositionPreset> = {
     fieldFrequency: 1.8,
     fieldTimeScale: 0.035,
     artDirection: {
-      perfectClosurePenalty: 0.6,
-      circleActivationCap: 0.25,
+      closureBreakStrength: 1.0,
+      arcClosureCap: 0.0,
       identityHalfLife: 10,
       targetDriftStrength: 0.5,
       antiIconThreshold: 0.4,

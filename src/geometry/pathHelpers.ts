@@ -365,3 +365,135 @@ export function ringPath(
   const visibleEnd = gapStart + TAU;
   return arcPath(cx, cy, r, visibleStart, visibleEnd);
 }
+
+// ── No-circle doctrine: replacement geometry helpers ──
+
+/** Two short opposing arcs separated by a gap — universal circle-slot replacement.
+ *  Same positioning as a circle (cx/cy) but never closes. */
+export function splitNodePath(
+  cx: number,
+  cy: number,
+  size: number,
+  splitAngle: number,
+  gapWidth: number,
+): string {
+  const halfGap = gapWidth * 0.5;
+  const sweep = Math.PI - halfGap;
+  // Two arcs on opposite sides, each subtending less than PI
+  const arc1 = arcPath(cx, cy, size, splitAngle + halfGap, splitAngle + halfGap + sweep * 0.8);
+  const a2Start = splitAngle + Math.PI + halfGap;
+  const arc2 = arcPath(cx, cy, size * 0.85, a2Start, a2Start + sweep * 0.7);
+  return arc1 + ' ' + arc2;
+}
+
+/** Disconnected arc fragments with radial jitter — ring replacement.
+ *  Sum of arcs never exceeds ~65% of a circle. */
+export function fracturedShellPath(
+  cx: number,
+  cy: number,
+  r: number,
+  fragmentCount: number,
+  maxSweepFraction: number,
+  jitter: number,
+): string {
+  const parts: string[] = [];
+  const gapBetween = TAU / fragmentCount;
+  let angle = 0;
+  for (let i = 0; i < fragmentCount; i++) {
+    const sweep = gapBetween * maxSweepFraction * (0.6 + 0.4 * Math.sin(i * 2.7 + 1.3));
+    const rr = r + jitter * Math.sin(i * 3.1 + 0.7);
+    const ox = jitter * 0.5 * Math.cos(i * 4.3);
+    const oy = jitter * 0.5 * Math.sin(i * 5.1);
+    parts.push(arcPath(cx + ox, cy + oy, rr, angle, angle + sweep));
+    angle += gapBetween;
+  }
+  return parts.join(' ');
+}
+
+/** Asymmetric lobe as cubic bezier — bulges on one side, tapers on other.
+ *  Replaces orbital node positions with non-circular pressure forms. */
+export function pressureLobePath(
+  stemX: number,
+  stemY: number,
+  angle: number,
+  length: number,
+  asymmetry: number,
+  bulge: number,
+): string {
+  const cosA = Math.cos(angle);
+  const sinA = Math.sin(angle);
+  const perpCos = Math.cos(angle + Math.PI / 2);
+  const perpSin = Math.sin(angle + Math.PI / 2);
+  const tipX = stemX + cosA * length;
+  const tipY = stemY + sinA * length;
+  // Asymmetric control points: one side bulges more
+  const cp1x = stemX + cosA * length * 0.3 + perpCos * bulge * (1 + asymmetry);
+  const cp1y = stemY + sinA * length * 0.3 + perpSin * bulge * (1 + asymmetry);
+  const cp2x = stemX + cosA * length * 0.7 - perpCos * bulge * (1 - asymmetry * 0.6);
+  const cp2y = stemY + sinA * length * 0.7 - perpSin * bulge * (1 - asymmetry * 0.6);
+  return cubicPath(stemX, stemY, cp1x, cp1y, cp2x, cp2y, tipX, tipY);
+}
+
+/** Line with perpendicular notch marks — scaffold/ruler feel.
+ *  Replaces radial connectors that pointed at circle nodes. */
+export function scaffoldStrutPath(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  notchCount: number,
+  notchDepth: number,
+): string {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len = Math.sqrt(dx * dx + dy * dy) || 1;
+  const nx = -dy / len; // perpendicular
+  const ny = dx / len;
+  const parts = [`M${x1.toFixed(2)} ${y1.toFixed(2)} L${x2.toFixed(2)} ${y2.toFixed(2)}`];
+  for (let i = 1; i <= notchCount; i++) {
+    const t = i / (notchCount + 1);
+    const bx = x1 + dx * t;
+    const by = y1 + dy * t;
+    // Alternating-depth notches for asymmetry
+    const depth = notchDepth * (0.6 + 0.4 * (i % 2));
+    parts.push(`M${(bx - nx * depth).toFixed(2)} ${(by - ny * depth).toFixed(2)} L${(bx + nx * depth * 0.7).toFixed(2)} ${(by + ny * depth * 0.7).toFixed(2)}`);
+  }
+  return parts.join(' ');
+}
+
+/** Offset arc segments around decentered foci with kinked connectors.
+ *  Replaces orbital/eccentric geometry with non-circular manifold logic. */
+export function bentManifoldPath(
+  cx: number,
+  cy: number,
+  fociCount: number,
+  spread: number,
+  perturbation: number,
+): string {
+  const parts: string[] = [];
+  const baseAngle = perturbation * 2.3; // deterministic rotation
+  for (let i = 0; i < fociCount; i++) {
+    const fAngle = baseAngle + (i / fociCount) * TAU + perturbation * Math.sin(i * 1.7);
+    const dist = spread * (0.5 + 0.5 * Math.sin(i * 2.1 + 0.5));
+    const fx = cx + Math.cos(fAngle) * dist;
+    const fy = cy + Math.sin(fAngle) * dist;
+    const r = spread * (0.3 + 0.2 * Math.cos(i * 3.3));
+    const startA = fAngle + perturbation * 0.5;
+    const sweep = (1.0 + 0.8 * Math.sin(i * 1.9)) * (Math.PI * 0.5); // 0.5-0.9 PI sweep
+    parts.push(arcPath(fx, fy, r, startA, startA + sweep));
+    // Kinked connector to next focus
+    if (i < fociCount - 1) {
+      const nextAngle = baseAngle + ((i + 1) / fociCount) * TAU + perturbation * Math.sin((i + 1) * 1.7);
+      const nextDist = spread * (0.5 + 0.5 * Math.sin((i + 1) * 2.1 + 0.5));
+      const nx = cx + Math.cos(nextAngle) * nextDist;
+      const ny = cy + Math.sin(nextAngle) * nextDist;
+      // Kink midpoint offset perpendicular
+      const mx = (fx + nx) * 0.5 + Math.cos(fAngle + Math.PI / 2) * perturbation * 3;
+      const my = (fy + ny) * 0.5 + Math.sin(fAngle + Math.PI / 2) * perturbation * 3;
+      const endX = fx + Math.cos(startA + sweep) * r;
+      const endY = fy + Math.sin(startA + sweep) * r;
+      parts.push(kinkedLinePath(endX, endY, mx, my, nx, ny));
+    }
+  }
+  return parts.join(' ');
+}

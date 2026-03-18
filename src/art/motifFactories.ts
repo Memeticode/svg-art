@@ -10,8 +10,9 @@ import type { PrimitiveState } from '@/geometry/primitiveTypes';
 import { zeroPrimitiveState } from '@/geometry/primitiveState';
 import {
   arcPath, spokePath, ribPath, crescentPath, linePath, quadPath, cubicPath,
-  kinkedLinePath, multiArcPath, jaggedPath, spiralSegmentPath, asymmetricRibPath,
+  kinkedLinePath, jaggedPath, spiralSegmentPath, asymmetricRibPath,
   brokenArcPath, loopCrossingPath, shellFragmentPath, biologicalArmPath,
+  splitNodePath, fracturedShellPath, pressureLobePath, scaffoldStrutPath, bentManifoldPath,
 } from '@/geometry/pathHelpers';
 import { TAU } from '@/shared/math';
 
@@ -51,7 +52,7 @@ export function createMotifState(
 }
 
 // ── Family: Radial Cluster ──
-// Radiating spokes from center with clustered nodes
+// Spoke Scaffold: asymmetric radiating arms with split-node center. No circles.
 function radialCluster(ctx: MotifGenerationContext): PrimitiveState {
   const { rng, region } = ctx;
   const state = zeroPrimitiveState();
@@ -60,10 +61,10 @@ function radialCluster(ctx: MotifGenerationContext): PrimitiveState {
   const innerR = rng.float(3, 8);
   const outerR = rng.float(18, 35);
 
-  // Paths 0-1: major spokes as arcs
+  // Paths 0-1: major spoke arcs (asymmetric sweep)
   for (let i = 0; i < 2; i++) {
     const angle = baseAngle + (i / spokeCount) * TAU;
-    const sweep = rng.float(0.3, 0.8) * (1 + region.circularity * 0.5);
+    const sweep = rng.float(0.3, 0.8) * (1 + region.closureTendency * 0.3);
     state.paths[i] = {
       active: true,
       d: arcPath(0, 0, outerR * rng.float(0.6, 1.0), angle, angle + sweep),
@@ -73,50 +74,40 @@ function radialCluster(ctx: MotifGenerationContext): PrimitiveState {
     };
   }
 
-  // Paths 2-4: spokes
+  // Paths 2-4: scaffold struts with notch marks (replace plain spokes)
   for (let i = 0; i < Math.min(spokeCount, 3); i++) {
     const angle = baseAngle + ((i + 2) / spokeCount) * TAU + rng.float(-0.15, 0.15);
+    const endR = outerR * rng.float(0.5, 0.9);
     state.paths[i + 2] = {
       active: true,
-      d: spokePath(0, 0, angle, innerR, outerR * rng.float(0.5, 0.9)),
+      d: scaffoldStrutPath(
+        Math.cos(angle) * innerR, Math.sin(angle) * innerR,
+        Math.cos(angle) * endR, Math.sin(angle) * endR,
+        rng.int(1, 3), rng.float(2, 5),
+      ),
       strokeWidth: rng.float(0.5, 1.5),
       opacity: rng.float(0.3, 0.7),
       dashArray: rng.bool(0.3) ? [rng.float(2, 6), rng.float(2, 4)] : [],
     };
   }
 
-  // Circle 0: single core node (always active)
+  // Path 5: split-node center mark (replaces circle 0)
   {
-    const angle = baseAngle;
-    const dist = rng.float(innerR * 0.5, outerR * 0.3);
-    state.circles[0] = {
+    const dist = rng.float(innerR * 0.3, outerR * 0.2);
+    const cx = Math.cos(baseAngle) * dist;
+    const cy = Math.sin(baseAngle) * dist;
+    state.paths[5] = {
       active: true,
-      cx: Math.cos(angle) * dist,
-      cy: Math.sin(angle) * dist,
-      r: rng.float(1.5, 4),
+      d: splitNodePath(cx, cy, rng.float(2, 5), baseAngle, rng.float(0.5, 1.2)),
       strokeWidth: rng.float(0.5, 1.2),
       opacity: rng.float(0.4, 0.8),
-      fillAlpha: rng.float(0, 0.15),
-    };
-  }
-  // Circles 1-2: conditional core nodes (30% each)
-  for (let i = 1; i < 3; i++) {
-    const angle = baseAngle + (i / 3) * TAU;
-    const dist = rng.float(innerR * 0.5, outerR * 0.3);
-    state.circles[i] = {
-      active: rng.bool(0.3),
-      cx: Math.cos(angle) * dist,
-      cy: Math.sin(angle) * dist,
-      r: rng.float(1.5, 4),
-      strokeWidth: rng.float(0.5, 1.2),
-      opacity: rng.float(0.4, 0.8),
-      fillAlpha: rng.float(0, 0.15),
+      dashArray: [],
     };
   }
 
-  // Paths 5-7: arc fragments replacing orbital accent circles
-  for (let i = 5; i < 8; i++) {
-    const angle = baseAngle + ((i - 5) / 3) * TAU + rng.float(0.2, 0.8);
+  // Paths 6-7: arc fragments at spoke ends
+  for (let i = 6; i < 8; i++) {
+    const angle = baseAngle + ((i - 4) / spokeCount) * TAU + rng.float(0.2, 0.8);
     const dist = rng.float(outerR * 0.4, outerR * 0.85);
     const arcStart = angle + rng.float(-0.3, 0.3);
     state.paths[i] = {
@@ -133,29 +124,15 @@ function radialCluster(ctx: MotifGenerationContext): PrimitiveState {
 }
 
 // ── Family: Interrupted Halo ──
-// Broken ring segments with internal nodes
+// Fractured Shell: disconnected arc fragments with gap marks. No circles, no ring.
 function interruptedHalo(ctx: MotifGenerationContext): PrimitiveState {
   const { rng, region } = ctx;
   const state = zeroPrimitiveState();
   const r = rng.float(18, 32);
-  const gapCount = rng.int(1, 3);
   const baseAngle = rng.float(0, TAU);
-
-  // Ring with gap — activation reduced to 85%
-  const gapStart = baseAngle;
   const gapSize = rng.float(0.4, 1.2) * (1 + region.fragmentation * 0.5);
-  state.ring = {
-    active: rng.bool(0.85),
-    cx: 0,
-    cy: 0,
-    r,
-    strokeWidth: rng.float(1.0, 2.5),
-    opacity: rng.float(0.5, 0.85),
-    gapStart,
-    gapEnd: gapStart + gapSize,
-  };
 
-  // Paths 0-1: arc segments at different radii
+  // Paths 0-1: inner arc segments at different radii
   for (let i = 0; i < 2; i++) {
     const segR = r * rng.float(0.55, 0.85);
     const segStart = baseAngle + rng.float(0.5, 2.0) + i * rng.float(1, 2.5);
@@ -169,7 +146,7 @@ function interruptedHalo(ctx: MotifGenerationContext): PrimitiveState {
     };
   }
 
-  // Paths 2-3: small radial ticks
+  // Paths 2-3: small radial ticks at shell boundary
   for (let i = 2; i < 4; i++) {
     const tickAngle = baseAngle + rng.float(0, TAU);
     state.paths[i] = {
@@ -181,42 +158,48 @@ function interruptedHalo(ctx: MotifGenerationContext): PrimitiveState {
     };
   }
 
-  // Circle 0: single node at gap (always active)
-  {
-    const angle = gapStart + gapSize * 0.5;
-    state.circles[0] = {
-      active: true,
-      cx: Math.cos(angle) * r * rng.float(0.85, 1.1),
-      cy: Math.sin(angle) * r * rng.float(0.85, 1.1),
-      r: rng.float(1, 3),
-      strokeWidth: rng.float(0.4, 1.0),
-      opacity: rng.float(0.4, 0.7),
-      fillAlpha: rng.float(0, 0.2),
-    };
-  }
-  // Circles 1-2: conditional gap nodes (30% each)
-  for (let i = 1; i < 3; i++) {
-    const angle = gapStart + gapSize * (i === 1 ? 0 : 1);
-    state.circles[i] = {
-      active: rng.bool(0.3),
-      cx: Math.cos(angle) * r * rng.float(0.85, 1.1),
-      cy: Math.sin(angle) * r * rng.float(0.85, 1.1),
-      r: rng.float(1, 3),
-      strokeWidth: rng.float(0.4, 1.0),
-      opacity: rng.float(0.4, 0.7),
-      fillAlpha: rng.float(0, 0.2),
-    };
-  }
-
-  // Center node — reduced to 30%
-  state.circles[3] = {
-    active: rng.bool(0.3),
-    cx: rng.float(-2, 2),
-    cy: rng.float(-2, 2),
-    r: rng.float(1.5, 4),
+  // Paths 4-5: fractured shell fragments (replace ring)
+  const fragmentCount = rng.int(2, 4);
+  const shellD = fracturedShellPath(0, 0, r, fragmentCount, 0.55, rng.float(1, 4));
+  // Split the multi-fragment path into two path slots for better interpolation
+  state.paths[4] = {
+    active: true,
+    d: shellD,
+    strokeWidth: rng.float(1.0, 2.5),
+    opacity: rng.float(0.5, 0.85),
+    dashArray: [],
+  };
+  state.paths[5] = {
+    active: rng.bool(0.7),
+    d: fracturedShellPath(0, 0, r * rng.float(0.8, 0.95), rng.int(2, 3), 0.45, rng.float(1, 3)),
     strokeWidth: rng.float(0.5, 1.5),
     opacity: rng.float(0.3, 0.6),
-    fillAlpha: rng.float(0, 0.1),
+    dashArray: rng.bool(0.4) ? [rng.float(3, 7), rng.float(2, 4)] : [],
+  };
+
+  // Paths 6-7: split-node marks at gap positions (replace circles)
+  const gapMidAngle = baseAngle + gapSize * 0.5;
+  state.paths[6] = {
+    active: true,
+    d: splitNodePath(
+      Math.cos(gapMidAngle) * r * rng.float(0.9, 1.1),
+      Math.sin(gapMidAngle) * r * rng.float(0.9, 1.1),
+      rng.float(2, 4), gapMidAngle, rng.float(0.5, 1.0),
+    ),
+    strokeWidth: rng.float(0.4, 1.0),
+    opacity: rng.float(0.4, 0.7),
+    dashArray: [],
+  };
+  state.paths[7] = {
+    active: rng.bool(0.6),
+    d: splitNodePath(
+      Math.cos(baseAngle) * r * rng.float(0.85, 1.05),
+      Math.sin(baseAngle) * r * rng.float(0.85, 1.05),
+      rng.float(1.5, 3), baseAngle + Math.PI, rng.float(0.4, 0.9),
+    ),
+    strokeWidth: rng.float(0.3, 0.8),
+    opacity: rng.float(0.3, 0.55),
+    dashArray: [],
   };
 
   return state;
@@ -272,22 +255,20 @@ function spineRibs(ctx: MotifGenerationContext): PrimitiveState {
     };
   }
 
-  // Circles: nodes at spine endpoints and rib junctions
-  state.circles[0] = {
+  // Paths 5-6: split-node endpoint marks (replace circles)
+  state.paths[5] = {
     active: true,
-    cx: -sx, cy: -sy,
-    r: rng.float(1.5, 3.5),
+    d: splitNodePath(-sx, -sy, rng.float(2, 4), spineAngle + Math.PI, rng.float(0.5, 1.0)),
     strokeWidth: rng.float(0.4, 1.0),
     opacity: rng.float(0.4, 0.7),
-    fillAlpha: rng.float(0, 0.15),
+    dashArray: [],
   };
-  state.circles[1] = {
+  state.paths[6] = {
     active: true,
-    cx: sx, cy: sy,
-    r: rng.float(1, 3),
+    d: splitNodePath(sx, sy, rng.float(1.5, 3), spineAngle, rng.float(0.4, 0.9)),
     strokeWidth: rng.float(0.4, 1.0),
     opacity: rng.float(0.3, 0.6),
-    fillAlpha: rng.float(0, 0.1),
+    dashArray: [],
   };
 
   return state;
@@ -337,17 +318,18 @@ function splitCrescent(ctx: MotifGenerationContext): PrimitiveState {
     };
   }
 
-  // Circles at crescent tips
+  // Paths 4-5: split-node tip marks (replace circles)
   for (let i = 0; i < 2; i++) {
     const tipAngle = baseAngle + (i === 0 ? 0 : sweep);
-    state.circles[i] = {
+    state.paths[i + 4] = {
       active: true,
-      cx: Math.cos(tipAngle) * outerR,
-      cy: Math.sin(tipAngle) * outerR,
-      r: rng.float(1, 3),
+      d: splitNodePath(
+        Math.cos(tipAngle) * outerR, Math.sin(tipAngle) * outerR,
+        rng.float(1.5, 3.5), tipAngle, rng.float(0.5, 1.0),
+      ),
       strokeWidth: rng.float(0.3, 0.8),
       opacity: rng.float(0.4, 0.7),
-      fillAlpha: rng.float(0.05, 0.2),
+      dashArray: [],
     };
   }
 
@@ -401,113 +383,113 @@ function branchStruts(ctx: MotifGenerationContext): PrimitiveState {
     dashArray: [rng.float(2, 5), rng.float(1, 3)],
   };
 
-  // Circles: endpoint nodes
-  state.circles[0] = {
+  // Paths 6-7: split-node endpoint marks (replace circles)
+  state.paths[6] = {
     active: true,
-    cx: 0, cy: 0,
-    r: rng.float(2, 4),
+    d: splitNodePath(0, 0, rng.float(2, 4), baseAngle + Math.PI, rng.float(0.5, 1.0)),
     strokeWidth: rng.float(0.5, 1.2),
     opacity: rng.float(0.4, 0.75),
-    fillAlpha: rng.float(0, 0.15),
+    dashArray: [],
   };
-  state.circles[1] = {
+  state.paths[7] = {
     active: true,
-    cx: tx, cy: ty,
-    r: rng.float(1.5, 3),
+    d: splitNodePath(tx, ty, rng.float(1.5, 3), baseAngle, rng.float(0.4, 0.9)),
     strokeWidth: rng.float(0.4, 1.0),
     opacity: rng.float(0.35, 0.65),
-    fillAlpha: rng.float(0, 0.1),
+    dashArray: [],
   };
 
   return state;
 }
 
 // ── Family: Orbital Nodes ──
-// Multiple nodes orbiting a center with connecting arcs
+// Pressure Node Field: split-node marks at non-orbital positions with broken arcs. No circles.
 function orbitalNodes(ctx: MotifGenerationContext): PrimitiveState {
   const { rng, region } = ctx;
   const state = zeroPrimitiveState();
-  const nodeCount = rng.int(3, 6);
-  const orbitR = rng.float(14, 28);
+  const nodeCount = rng.int(3, 5);
+  const spread = rng.float(14, 28);
   const baseAngle = rng.float(0, TAU);
 
-  // Paths 0-1: connecting arcs between nodes
+  // Paths 0-1: broken connecting arcs (non-orbital — off-center, uneven)
   for (let i = 0; i < 2; i++) {
-    const startAngle = baseAngle + (i * TAU) / nodeCount;
-    const sweep = (TAU / nodeCount) * rng.float(0.5, 0.9);
-    const arcR = orbitR * rng.float(0.7, 1.1);
+    const startAngle = baseAngle + (i * TAU) / nodeCount + rng.float(-0.3, 0.3);
+    const sweep = rng.float(0.5, 1.4);
+    const arcR = spread * rng.float(0.6, 1.1);
+    const ox = rng.float(-4, 4); // off-center to prevent orbital readability
+    const oy = rng.float(-4, 4);
     state.paths[i] = {
       active: true,
-      d: arcPath(0, 0, arcR, startAngle, startAngle + sweep),
-      strokeWidth: rng.float(0.5, 1.5),
-      opacity: rng.float(0.35, 0.7),
-      dashArray: rng.bool(0.35) ? [rng.float(2, 5), rng.float(1, 3)] : [],
-    };
-  }
-
-  // Paths 2-4: radial connectors to center
-  for (let i = 2; i < 5 && (i - 2) < nodeCount; i++) {
-    const angle = baseAngle + ((i - 2) / nodeCount) * TAU;
-    state.paths[i] = {
-      active: rng.bool(0.5 + region.coherence * 0.3),
-      d: spokePath(0, 0, angle, 2, orbitR * rng.float(0.5, 0.85)),
-      strokeWidth: rng.float(0.3, 1.0),
-      opacity: rng.float(0.2, 0.5),
-      dashArray: [rng.float(1, 3), rng.float(1, 2)],
-    };
-  }
-
-  // Circles: orbital nodes — reduced to 2-3 (first 2 always, third conditional)
-  const activeNodeCount = Math.min(nodeCount, 3);
-  for (let i = 0; i < activeNodeCount; i++) {
-    const angle = baseAngle + (i / nodeCount) * TAU;
-    const r = orbitR * rng.float(0.85, 1.15);
-    state.circles[i] = {
-      active: i < 2 ? true : rng.bool(0.4),
-      cx: Math.cos(angle) * r,
-      cy: Math.sin(angle) * r,
-      r: rng.float(1.5, 4),
-      strokeWidth: rng.float(0.4, 1.2),
+      d: brokenArcPath(ox, oy, arcR, startAngle, sweep,
+        [{ at: rng.float(0.3, 0.7), width: rng.float(0.06, 0.14) }]),
+      strokeWidth: rng.float(0.6, 1.8),
       opacity: rng.float(0.4, 0.8),
-      fillAlpha: rng.float(0, 0.2),
+      dashArray: rng.bool(0.3) ? [rng.float(2, 5), rng.float(1, 3)] : [],
     };
   }
 
-  // Paths 5-7: brokenArcPath accents replacing removed orbital circles
-  for (let i = 5; i < 8; i++) {
+  // Paths 2-4: pressure lobe marks at node positions (replace circles)
+  for (let i = 0; i < Math.min(nodeCount, 3); i++) {
+    const angle = baseAngle + (i / nodeCount) * TAU + rng.float(-0.2, 0.2);
+    const dist = spread * rng.float(0.6, 1.1);
+    const nx = Math.cos(angle) * dist;
+    const ny = Math.sin(angle) * dist;
+    state.paths[i + 2] = {
+      active: i < 2 ? true : rng.bool(0.6),
+      d: pressureLobePath(nx, ny, angle + rng.float(-0.5, 0.5),
+        rng.float(5, 12), rng.float(-0.6, 0.6), rng.float(2, 6)),
+      strokeWidth: rng.float(0.5, 1.3),
+      opacity: rng.float(0.35, 0.75),
+      dashArray: [],
+    };
+  }
+
+  // Paths 5-6: split-node accent marks
+  for (let i = 5; i < 7; i++) {
     const angle = baseAngle + ((i - 2) / nodeCount) * TAU;
-    const arcR = orbitR * rng.float(0.7, 1.2);
+    const dist = spread * rng.float(0.5, 0.9);
     state.paths[i] = {
-      active: rng.bool(0.5),
-      d: brokenArcPath(0, 0, arcR, angle, rng.float(0.6, 1.4),
-        [{ at: rng.float(0.3, 0.7), width: rng.float(0.05, 0.12) }]),
+      active: rng.bool(0.6),
+      d: splitNodePath(
+        Math.cos(angle) * dist, Math.sin(angle) * dist,
+        rng.float(2, 4), angle, rng.float(0.5, 1.2),
+      ),
       strokeWidth: rng.float(0.3, 0.9),
-      opacity: rng.float(0.2, 0.5),
-      dashArray: rng.bool(0.4) ? [rng.float(2, 5), rng.float(1, 3)] : [],
+      opacity: rng.float(0.25, 0.55),
+      dashArray: [],
     };
   }
 
-  // Center node — reduced to 30%
-  state.circles[6] = {
-    active: rng.bool(0.3),
-    cx: 0, cy: 0,
-    r: rng.float(2, 5),
-    strokeWidth: rng.float(0.5, 1.5),
-    opacity: rng.float(0.3, 0.6),
-    fillAlpha: rng.float(0.05, 0.15),
-  };
+  // Path 7: scaffold strut connector
+  {
+    const a1 = baseAngle;
+    const a2 = baseAngle + TAU / nodeCount;
+    const d1 = spread * 0.7;
+    const d2 = spread * 0.8;
+    state.paths[7] = {
+      active: rng.bool(0.5 + region.coherence * 0.3),
+      d: scaffoldStrutPath(
+        Math.cos(a1) * d1, Math.sin(a1) * d1,
+        Math.cos(a2) * d2, Math.sin(a2) * d2,
+        rng.int(1, 2), rng.float(2, 4),
+      ),
+      strokeWidth: rng.float(0.3, 0.8),
+      opacity: rng.float(0.2, 0.45),
+      dashArray: [rng.float(2, 4), rng.float(1, 3)],
+    };
+  }
 
   return state;
 }
 
 // ── Family: Partial Enclosure ──
-// Large bounding arc with internal suspended elements
+// Eroded Enclosure: partial hull with split-node endpoints. No circles, no ring.
 function partialEnclosure(ctx: MotifGenerationContext): PrimitiveState {
   const { rng, region } = ctx;
   const state = zeroPrimitiveState();
   const encR = rng.float(22, 38);
   const baseAngle = rng.float(0, TAU);
-  const encSweep = rng.float(2.5, 4.5) * (0.7 + region.circularity * 0.3);
+  const encSweep = rng.float(2.5, 4.5) * (0.7 + region.closureTendency * 0.3);
 
   // Path 0: main enclosing arc
   state.paths[0] = {
@@ -541,39 +523,34 @@ function partialEnclosure(ctx: MotifGenerationContext): PrimitiveState {
     };
   }
 
-  // Circles: endpoint caps and internal nodes
+  // Paths 5-6: split-node endpoint marks (replace circles 0-1)
   for (let i = 0; i < 2; i++) {
     const capAngle = baseAngle + (i === 0 ? 0 : encSweep);
-    state.circles[i] = {
+    state.paths[i + 5] = {
       active: true,
-      cx: Math.cos(capAngle) * encR,
-      cy: Math.sin(capAngle) * encR,
-      r: rng.float(1.5, 3.5),
+      d: splitNodePath(
+        Math.cos(capAngle) * encR, Math.sin(capAngle) * encR,
+        rng.float(2, 4), capAngle, rng.float(0.5, 1.0),
+      ),
       strokeWidth: rng.float(0.5, 1.2),
       opacity: rng.float(0.45, 0.8),
-      fillAlpha: rng.float(0.05, 0.2),
+      dashArray: [],
     };
   }
-  // Internal suspended node — reduced to 40%
-  state.circles[2] = {
-    active: rng.bool(0.4),
-    cx: Math.cos(baseAngle + encSweep * 0.5) * encR * 0.4,
-    cy: Math.sin(baseAngle + encSweep * 0.5) * encR * 0.4,
-    r: rng.float(2, 5),
-    strokeWidth: rng.float(0.5, 1.5),
-    opacity: rng.float(0.35, 0.65),
-    fillAlpha: rng.float(0, 0.15),
-  };
 
-  // Ring: subtle secondary enclosure
-  state.ring = {
-    active: rng.bool(0.4),
-    cx: 0, cy: 0,
-    r: encR * rng.float(0.4, 0.6),
-    strokeWidth: rng.float(0.3, 0.8),
-    opacity: rng.float(0.15, 0.35),
-    gapStart: baseAngle + encSweep * 0.3,
-    gapEnd: baseAngle + encSweep * 0.7,
+  // Path 7: internal pressure lobe (replaces circle 2 + ring)
+  const lobeMidAngle = baseAngle + encSweep * 0.5;
+  state.paths[7] = {
+    active: rng.bool(0.6),
+    d: pressureLobePath(
+      Math.cos(lobeMidAngle) * encR * 0.3,
+      Math.sin(lobeMidAngle) * encR * 0.3,
+      lobeMidAngle, rng.float(6, 14),
+      rng.float(-0.6, 0.6), rng.float(3, 7),
+    ),
+    strokeWidth: rng.float(0.5, 1.3),
+    opacity: rng.float(0.3, 0.6),
+    dashArray: [],
   };
 
   return state;
@@ -656,39 +633,29 @@ function kinkedSpine(ctx: MotifGenerationContext): PrimitiveState {
     dashArray: [rng.float(1, 3), rng.float(1, 2)],
   };
 
-  // Circles: stress nodes at kink vertices
-  state.circles[0] = {
+  // Paths 6-7: split-node stress marks at kink vertices (replace circles)
+  state.paths[6] = {
     active: true,
-    cx: kinkX, cy: kinkY,
-    r: rng.float(2, 5),
+    d: splitNodePath(kinkX, kinkY, rng.float(2.5, 5), baseAngle + Math.PI / 2, rng.float(0.5, 1.2)),
     strokeWidth: rng.float(0.6, 1.5),
     opacity: rng.float(0.5, 0.85),
-    fillAlpha: rng.float(0.03, 0.12),
+    dashArray: [],
   };
-  state.circles[1] = {
+  state.paths[7] = {
     active: rng.bool(0.6),
-    cx: startX, cy: startY,
-    r: rng.float(1, 2.5),
+    d: splitNodePath(startX, startY, rng.float(1.5, 3), baseAngle + Math.PI, rng.float(0.4, 0.9)),
     strokeWidth: rng.float(0.3, 0.8),
     opacity: rng.float(0.3, 0.55),
-    fillAlpha: rng.float(0, 0.08),
-  };
-  state.circles[2] = {
-    active: rng.bool(0.5),
-    cx: endX, cy: endY,
-    r: rng.float(1, 2),
-    strokeWidth: rng.float(0.3, 0.8),
-    opacity: rng.float(0.25, 0.5),
-    fillAlpha: rng.float(0, 0.06),
+    dashArray: [],
   };
 
   return state;
 }
 
 // ── Family: Eccentric Orbit ──
-// Multi-center orbital — arcs around different foci. Unstable, off-balance.
+// Decentered Manifold: offset arc segments around decentered foci. No circles, no ring.
 function eccentricOrbit(ctx: MotifGenerationContext): PrimitiveState {
-  const { rng, region } = ctx;
+  const { rng } = ctx;
   const state = zeroPrimitiveState();
 
   // 2-3 off-origin focal centers
@@ -704,97 +671,69 @@ function eccentricOrbit(ctx: MotifGenerationContext): PrimitiveState {
     });
   }
 
-  // Paths 0-1: compound arcs orbiting different foci
+  // Paths 0-1: bent manifold paths around decentered foci
   for (let i = 0; i < 2 && i < focals.length; i++) {
     const f = focals[i];
-    const segCount = rng.int(2, 3);
-    const segments: Array<{ r: number; startAngle: number; sweep: number }> = [];
-    let angle = rng.float(0, TAU);
-    for (let s = 0; s < segCount; s++) {
-      const sweep = rng.float(0.8, 1.8) * (0.7 + region.circularity * 0.3);
-      segments.push({
-        r: f.r * rng.float(0.7, 1.3),
-        startAngle: angle,
-        sweep,
-      });
-      angle += sweep + rng.float(0.2, 0.6); // gap between segments
-    }
     state.paths[i] = {
       active: true,
-      d: multiArcPath(f.x, f.y, segments),
+      d: bentManifoldPath(f.x, f.y, rng.int(2, 3), f.r * rng.float(0.6, 1.0), rng.float(0.5, 2.0)),
       strokeWidth: rng.float(0.7, 2.0),
       opacity: rng.float(0.45, 0.85),
       dashArray: rng.bool(0.3) ? [rng.float(3, 7), rng.float(2, 4)] : [],
     };
   }
 
-  // Paths 2-3: connecting ligatures between foci
+  // Path 2: kinked connecting ligature between foci
   if (focals.length >= 2) {
     const f0 = focals[0], f1 = focals[1];
-    const midX = (f0.x + f1.x) * 0.5 + rng.float(-5, 5);
-    const midY = (f0.y + f1.y) * 0.5 + rng.float(-5, 5);
+    const kinkX = (f0.x + f1.x) * 0.5 + rng.float(-8, 8);
+    const kinkY = (f0.y + f1.y) * 0.5 + rng.float(-8, 8);
     state.paths[2] = {
       active: rng.bool(0.7),
-      d: quadPath(f0.x, f0.y, midX, midY, f1.x, f1.y),
+      d: kinkedLinePath(f0.x, f0.y, kinkX, kinkY, f1.x, f1.y),
       strokeWidth: rng.float(0.4, 1.0),
       opacity: rng.float(0.2, 0.5),
       dashArray: [rng.float(2, 5), rng.float(1, 3)],
     };
   }
 
-  // Path 4: accent arc fragment
-  if (focals.length >= 2) {
-    const f = focals[rng.int(0, focals.length - 1)];
-    state.paths[4] = {
-      active: rng.bool(0.5),
-      d: arcPath(f.x * 0.5, f.y * 0.5, rng.float(5, 12), rng.float(0, TAU), rng.float(0, TAU) + rng.float(0.5, 1.5)),
-      strokeWidth: rng.float(0.3, 0.8),
-      opacity: rng.float(0.15, 0.4),
-      dashArray: [rng.float(1, 3), rng.float(1, 2)],
-    };
-  }
-
-  // Circles: focal nodes — reduced radius range
-  for (let i = 0; i < focals.length && i < 3; i++) {
-    state.circles[i] = {
-      active: i === 0 ? true : rng.bool(0.5),
-      cx: focals[i].x,
-      cy: focals[i].y,
-      r: rng.float(1.0, 2.5),
-      strokeWidth: rng.float(0.4, 1.2),
-      opacity: rng.float(0.4, 0.75),
-      fillAlpha: rng.float(0.04, 0.15),
-    };
-  }
-
-  // Satellite dots — reduced activation to 25%
-  for (let i = 3; i < 6; i++) {
-    const f = focals[rng.int(0, focals.length - 1)];
-    const orbitAngle = rng.float(0, TAU);
-    const orbitDist = f.r * rng.float(0.6, 1.2);
-    state.circles[i] = {
-      active: rng.bool(0.25),
-      cx: f.x + Math.cos(orbitAngle) * orbitDist,
-      cy: f.y + Math.sin(orbitAngle) * orbitDist,
-      r: rng.float(0.6, 2),
-      strokeWidth: rng.float(0.2, 0.7),
-      opacity: rng.float(0.2, 0.5),
-      fillAlpha: rng.float(0, 0.08),
-    };
-  }
-
-  // Ring: off-center enclosure around largest focal
+  // Paths 3-4: fractured shell fragments (replace ring)
   const mainFocal = focals[0];
-  state.ring = {
-    active: rng.bool(0.4),
-    cx: mainFocal.x * 0.7,
-    cy: mainFocal.y * 0.7,
-    r: mainFocal.r * rng.float(1.1, 1.6),
-    strokeWidth: rng.float(0.4, 1.0),
-    opacity: rng.float(0.15, 0.35),
-    gapStart: rng.float(0, TAU),
-    gapEnd: rng.float(0, TAU) + rng.float(0.8, 2.0),
+  state.paths[3] = {
+    active: true,
+    d: fracturedShellPath(
+      mainFocal.x * 0.5, mainFocal.y * 0.5,
+      mainFocal.r * rng.float(1.0, 1.5),
+      rng.int(2, 3), 0.5, rng.float(2, 5),
+    ),
+    strokeWidth: rng.float(0.5, 1.3),
+    opacity: rng.float(0.3, 0.6),
+    dashArray: [],
   };
+  state.paths[4] = {
+    active: rng.bool(0.6),
+    d: fracturedShellPath(
+      rng.float(-5, 5), rng.float(-5, 5),
+      rng.float(8, 16), rng.int(2, 3), 0.4, rng.float(1, 4),
+    ),
+    strokeWidth: rng.float(0.3, 0.9),
+    opacity: rng.float(0.2, 0.45),
+    dashArray: rng.bool(0.4) ? [rng.float(2, 5), rng.float(1, 3)] : [],
+  };
+
+  // Paths 5-7: split-node focal marks (replace circles)
+  for (let i = 0; i < Math.min(focalCount, 3); i++) {
+    state.paths[i + 5] = {
+      active: i === 0 ? true : rng.bool(0.6),
+      d: splitNodePath(
+        focals[i].x, focals[i].y,
+        rng.float(2, 4), rng.float(0, TAU), rng.float(0.5, 1.2),
+      ),
+      strokeWidth: rng.float(0.4, 1.0),
+      opacity: rng.float(0.35, 0.7),
+      dashArray: [],
+    };
+  }
 
   return state;
 }
@@ -845,27 +784,22 @@ function unfoldingFan(ctx: MotifGenerationContext): PrimitiveState {
     dashArray: [rng.float(2, 4), rng.float(1, 3)],
   };
 
-  // Circles: only at blade tips (sparse)
+  // Split-node marks at blade tips (no circles)
   const tipAngle = baseAngle + rng.float(1.5, 3.5);
   const tipR = rng.float(20, 35);
-  state.circles[0] = {
+  state.paths[6] = {
     active: true,
-    cx: Math.cos(tipAngle) * tipR,
-    cy: Math.sin(tipAngle) * tipR,
-    r: rng.float(1.5, 3.5),
+    d: splitNodePath(Math.cos(tipAngle) * tipR, Math.sin(tipAngle) * tipR, rng.float(2, 4.5), tipAngle, rng.float(0.3, 0.6)),
     strokeWidth: rng.float(0.4, 1.0),
     opacity: rng.float(0.4, 0.75),
-    fillAlpha: rng.float(0.04, 0.15),
+    dashArray: [],
   };
-  // Second tip
-  state.circles[1] = {
+  state.paths[7] = {
     active: rng.bool(0.5),
-    cx: Math.cos(baseAngle + rng.float(0.8, 1.8)) * tipR * 0.6,
-    cy: Math.sin(baseAngle + rng.float(0.8, 1.8)) * tipR * 0.6,
-    r: rng.float(1, 2.5),
+    d: splitNodePath(Math.cos(baseAngle + rng.float(0.8, 1.8)) * tipR * 0.6, Math.sin(baseAngle + rng.float(0.8, 1.8)) * tipR * 0.6, rng.float(1.5, 3), baseAngle, rng.float(0.3, 0.6)),
     strokeWidth: rng.float(0.3, 0.8),
     opacity: rng.float(0.25, 0.55),
-    fillAlpha: rng.float(0, 0.08),
+    dashArray: [],
   };
 
   return state;
@@ -923,16 +857,21 @@ function scatterFragment(ctx: MotifGenerationContext): PrimitiveState {
     dashArray: [],
   };
 
-  // Circles: scattered asymmetric dots (sparse, small)
+  // Tiny jagged marks replace scattered dot circles
   for (let i = 0; i < 3; i++) {
-    state.circles[i] = {
+    const dotX = rng.float(-scatter * 0.7, scatter * 0.7);
+    const dotY = rng.float(-scatter * 0.7, scatter * 0.7);
+    const jSize = rng.float(1, 4);
+    state.paths[i === 0 ? 4 : i === 1 ? 6 : 7] = {
       active: rng.bool(0.45),
-      cx: rng.float(-scatter * 0.7, scatter * 0.7),
-      cy: rng.float(-scatter * 0.7, scatter * 0.7),
-      r: rng.float(0.5, 2.5),
+      d: jaggedPath([
+        { x: dotX - jSize, y: dotY - jSize * 0.5 },
+        { x: dotX + jSize * 0.3, y: dotY + jSize },
+        { x: dotX + jSize, y: dotY - jSize * 0.3 },
+      ]),
       strokeWidth: rng.float(0.2, 0.8),
       opacity: rng.float(0.25, 0.6),
-      fillAlpha: rng.float(0, 0.1),
+      dashArray: [],
     };
   }
 
@@ -1011,22 +950,20 @@ function driftingTendril(ctx: MotifGenerationContext): PrimitiveState {
     dashArray: [rng.float(1, 3), rng.float(1, 2)],
   };
 
-  // Circles: minimal — only at endpoints
-  state.circles[0] = {
+  // Split-node marks at tendril endpoints (no circles)
+  state.paths[6] = {
     active: rng.bool(0.6),
-    cx: x1, cy: y1,
-    r: rng.float(1, 2.5),
+    d: splitNodePath(x1, y1, rng.float(1.5, 3), flowAngle + Math.PI, rng.float(0.3, 0.6)),
     strokeWidth: rng.float(0.3, 0.8),
     opacity: rng.float(0.3, 0.6),
-    fillAlpha: rng.float(0, 0.08),
+    dashArray: [],
   };
-  state.circles[1] = {
+  state.paths[7] = {
     active: rng.bool(0.5),
-    cx: x2, cy: y2,
-    r: rng.float(0.8, 2),
+    d: splitNodePath(x2, y2, rng.float(1, 2.5), flowAngle, rng.float(0.3, 0.6)),
     strokeWidth: rng.float(0.3, 0.7),
     opacity: rng.float(0.25, 0.5),
-    fillAlpha: rng.float(0, 0.06),
+    dashArray: [],
   };
 
   return state;
@@ -1121,17 +1058,15 @@ function brokenCrescentFactory(ctx: MotifGenerationContext): PrimitiveState {
     };
   }
 
-  // Circle: 0-1 at notch stress points
+  // Split-node mark at notch stress point (no circles)
   if (notches.length > 0) {
     const stressAngle = baseAngle + sweep * notches[0].at;
-    state.circles[0] = {
+    state.paths[6] = {
       active: rng.bool(0.6),
-      cx: Math.cos(stressAngle) * r * rng.float(0.9, 1.1),
-      cy: Math.sin(stressAngle) * r * rng.float(0.9, 1.1),
-      r: rng.float(1, 3),
+      d: splitNodePath(Math.cos(stressAngle) * r * rng.float(0.9, 1.1), Math.sin(stressAngle) * r * rng.float(0.9, 1.1), rng.float(1.5, 3.5), stressAngle, rng.float(0.3, 0.6)),
       strokeWidth: rng.float(0.3, 0.8),
       opacity: rng.float(0.3, 0.6),
-      fillAlpha: rng.float(0, 0.08),
+      dashArray: [],
     };
   }
 
@@ -1222,14 +1157,13 @@ function splitLobeFactory(ctx: MotifGenerationContext): PrimitiveState {
     dashArray: [rng.float(1, 3), rng.float(1, 2)],
   };
 
-  // Circle: 0-1 at stem junction
-  state.circles[0] = {
+  // Split-node mark at stem junction (no circles)
+  state.paths[6] = {
     active: rng.bool(0.5),
-    cx: stemX, cy: stemY,
-    r: rng.float(1.5, 3.5),
+    d: splitNodePath(stemX, stemY, rng.float(2, 4.5), stemAngle, rng.float(0.3, 0.6)),
     strokeWidth: rng.float(0.4, 1.0),
     opacity: rng.float(0.35, 0.65),
-    fillAlpha: rng.float(0, 0.1),
+    dashArray: [],
   };
 
   return state;
@@ -1303,15 +1237,13 @@ function ribbedSpineFactory(ctx: MotifGenerationContext): PrimitiveState {
     dashArray: [rng.float(4, 8), rng.float(3, 6)],
   };
 
-  // Circle: 0-1 at spine midpoint (rare)
-  state.circles[0] = {
+  // Split-node mark at spine midpoint (no circles)
+  state.paths[7] = {
     active: rng.bool(0.3),
-    cx: Math.cos(perpAngle) * curve * 0.3,
-    cy: Math.sin(perpAngle) * curve * 0.3,
-    r: rng.float(1.5, 3),
+    d: splitNodePath(Math.cos(perpAngle) * curve * 0.3, Math.sin(perpAngle) * curve * 0.3, rng.float(2, 4), spineAngle, rng.float(0.3, 0.6)),
     strokeWidth: rng.float(0.4, 0.9),
     opacity: rng.float(0.3, 0.55),
-    fillAlpha: rng.float(0, 0.08),
+    dashArray: [],
   };
 
   return state;
@@ -1393,15 +1325,13 @@ function interruptedShellFactory(ctx: MotifGenerationContext): PrimitiveState {
     dashArray: [],
   };
 
-  // Circle: 0-1 at gap endpoints
-  state.circles[0] = {
+  // Split-node mark at gap endpoint (no circles)
+  state.paths[6] = {
     active: rng.bool(0.5),
-    cx: Math.cos(gapAngle1) * outerR,
-    cy: Math.sin(gapAngle1) * outerR,
-    r: rng.float(1, 2.5),
+    d: splitNodePath(Math.cos(gapAngle1) * outerR, Math.sin(gapAngle1) * outerR, rng.float(1.5, 3), gapAngle1, rng.float(0.3, 0.6)),
     strokeWidth: rng.float(0.3, 0.8),
     opacity: rng.float(0.3, 0.6),
-    fillAlpha: rng.float(0, 0.08),
+    dashArray: [],
   };
 
   return state;
@@ -1548,15 +1478,20 @@ function pressureFragmentFactory(ctx: MotifGenerationContext): PrimitiveState {
     };
   }
 
-  // Circle: 0-1 tiny stress nodes
-  state.circles[0] = {
+  // Tiny jagged stress mark (no circles)
+  const stressX = rng.float(-spread * 0.3, spread * 0.3);
+  const stressY = rng.float(-spread * 0.3, spread * 0.3);
+  const sSize = rng.float(1, 3);
+  state.paths[6] = {
     active: rng.bool(0.4),
-    cx: rng.float(-spread * 0.3, spread * 0.3),
-    cy: rng.float(-spread * 0.3, spread * 0.3),
-    r: rng.float(0.5, 1.5),
+    d: jaggedPath([
+      { x: stressX - sSize, y: stressY },
+      { x: stressX, y: stressY + sSize },
+      { x: stressX + sSize, y: stressY - sSize * 0.5 },
+    ]),
     strokeWidth: rng.float(0.2, 0.6),
     opacity: rng.float(0.25, 0.5),
-    fillAlpha: rng.float(0, 0.06),
+    dashArray: [],
   };
 
   return state;
@@ -1630,15 +1565,13 @@ function semiBiologicalScaffoldFactory(ctx: MotifGenerationContext): PrimitiveSt
     dashArray: [rng.float(3, 6), rng.float(2, 4)],
   };
 
-  // Circle: 1 at joint point
-  state.circles[0] = {
+  // Split-node mark at joint point (no circles)
+  state.paths[6] = {
     active: rng.bool(0.6),
-    cx: rng.float(-2, 2),
-    cy: rng.float(-2, 2),
-    r: rng.float(2, 4),
+    d: splitNodePath(rng.float(-2, 2), rng.float(-2, 2), rng.float(2.5, 5), mainAngle, rng.float(0.3, 0.6)),
     strokeWidth: rng.float(0.5, 1.2),
     opacity: rng.float(0.35, 0.65),
-    fillAlpha: rng.float(0.02, 0.1),
+    dashArray: [],
   };
 
   return state;

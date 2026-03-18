@@ -11,15 +11,15 @@ export interface MotifFamilyDef {
 }
 
 export const MOTIF_FAMILIES: Record<MotifFamilyId, MotifFamilyDef> = {
-  // Original families (circles/radial forms rare — low weight)
+  // Redesigned families (no circles — scaffold/shell forms)
   radialCluster: {
     id: 'radialCluster',
-    compatibleWith: ['interruptedHalo', 'eccentricOrbit'],
+    compatibleWith: ['branchStruts', 'semiBiologicalScaffold', 'pressureFragment'],
     baseWeight: 0.6,
   },
   interruptedHalo: {
     id: 'interruptedHalo',
-    compatibleWith: ['radialCluster', 'partialEnclosure', 'eccentricOrbit'],
+    compatibleWith: ['interruptedShell', 'partialEnclosure', 'brokenCrescent'],
     baseWeight: 1.0,
   },
   spineRibs: {
@@ -39,12 +39,12 @@ export const MOTIF_FAMILIES: Record<MotifFamilyId, MotifFamilyDef> = {
   },
   orbitalNodes: {
     id: 'orbitalNodes',
-    compatibleWith: ['eccentricOrbit', 'branchStruts'],
+    compatibleWith: ['pressureFragment', 'scatterFragment', 'semiBiologicalScaffold'],
     baseWeight: 0.7,
   },
   partialEnclosure: {
     id: 'partialEnclosure',
-    compatibleWith: ['interruptedHalo', 'splitCrescent', 'unfoldingFan'],
+    compatibleWith: ['interruptedShell', 'splitCrescent', 'brokenCrescent'],
     baseWeight: 0.8,
   },
 
@@ -56,7 +56,7 @@ export const MOTIF_FAMILIES: Record<MotifFamilyId, MotifFamilyDef> = {
   },
   eccentricOrbit: {
     id: 'eccentricOrbit',
-    compatibleWith: ['orbitalNodes', 'interruptedHalo', 'unfoldingFan'],
+    compatibleWith: ['knotManifold', 'interruptedShell', 'splitLobe'],
     baseWeight: 1.0,
   },
   unfoldingFan: {
