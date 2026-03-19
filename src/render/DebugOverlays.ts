@@ -7,7 +7,7 @@ import type { Viewport } from '@/shared/types';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
-export type DebugMode = 'regions' | 'flow' | 'density' | 'families' | 'comfort' | 'climate' | 'memory' | 'causality' | 'timescales';
+export type DebugMode = 'regions' | 'flow' | 'density' | 'families' | 'comfort' | 'climate' | 'memory' | 'causality' | 'timescales' | 'continuity';
 
 export interface DebugOverlays {
   update(agents: MorphAgent[], sampler: FieldSampler, viewport: Viewport, timeSec: number, climate?: ClimateController): void;
@@ -76,6 +76,9 @@ export function createDebugOverlays(svg: SVGSVGElement): DebugOverlays {
           break;
         case 'timescales':
           if (climate) renderTimescales(group, climate, viewport);
+          break;
+        case 'continuity':
+          renderContinuity(group, agents, viewport);
           break;
       }
     }
@@ -370,4 +373,82 @@ function renderTimescales(
     arrow.setAttribute('stroke-width', '2');
     group.appendChild(arrow);
   }
+}
+
+// ── Continuity overlay: measure and display off-screen stroke ratios ──
+function renderContinuity(
+  group: SVGGElement, agents: MorphAgent[], viewport: Viewport,
+): void {
+  let totalStrokes = 0;
+  let offScreenStart = 0;
+  let offScreenEnd = 0;
+  let fullyContained = 0;
+
+  const numRe = /-?\d+\.?\d*/g;
+
+  for (const a of agents) {
+    if (!a.alive) continue;
+    const cx = a.xNorm * viewport.width;
+    const cy = a.yNorm * viewport.height;
+    const scale = a.scale;
+
+    for (const p of a.currentState.paths) {
+      if (!p.active) continue;
+      totalStrokes++;
+
+      // Extract first and last coordinate pairs
+      const nums: number[] = [];
+      numRe.lastIndex = 0;
+      let m;
+      while ((m = numRe.exec(p.d)) !== null) nums.push(parseFloat(m[0]));
+      if (nums.length < 4) continue;
+
+      const sx = cx + nums[0] * scale;
+      const sy = cy + nums[1] * scale;
+      const ex = cx + nums[nums.length - 2] * scale;
+      const ey = cy + nums[nums.length - 1] * scale;
+
+      const startOff = sx < 0 || sx > viewport.width || sy < 0 || sy > viewport.height;
+      const endOff = ex < 0 || ex > viewport.width || ey < 0 || ey > viewport.height;
+
+      if (startOff) offScreenStart++;
+      if (endOff) offScreenEnd++;
+      if (!startOff && !endOff) fullyContained++;
+    }
+  }
+
+  // Display metrics as text overlay
+  const entryRatio = totalStrokes > 0 ? (offScreenStart / totalStrokes * 100).toFixed(0) : '0';
+  const exitRatio = totalStrokes > 0 ? (offScreenEnd / totalStrokes * 100).toFixed(0) : '0';
+  const containedPct = totalStrokes > 0 ? (fullyContained / totalStrokes * 100).toFixed(0) : '0';
+
+  const lines = [
+    `off-screen start: ${entryRatio}%`,
+    `off-screen end: ${exitRatio}%`,
+    `fully contained: ${containedPct}%`,
+    `total strokes: ${totalStrokes}`,
+  ];
+
+  for (let i = 0; i < lines.length; i++) {
+    const text = document.createElementNS(SVG_NS, 'text');
+    text.setAttribute('x', '12');
+    text.setAttribute('y', String(24 + i * 18));
+    text.setAttribute('fill', '#ffffff');
+    text.setAttribute('font-size', '13');
+    text.setAttribute('font-family', 'monospace');
+    text.setAttribute('opacity', '0.7');
+    text.textContent = lines[i];
+    group.appendChild(text);
+  }
+
+  // Color-code: green if contained < 20%, yellow < 40%, red >= 40%
+  const containedNum = totalStrokes > 0 ? fullyContained / totalStrokes : 0;
+  const statusColor = containedNum < 0.2 ? '#4ade80' : containedNum < 0.4 ? '#facc15' : '#f87171';
+  const indicator = document.createElementNS(SVG_NS, 'circle');
+  indicator.setAttribute('cx', '180');
+  indicator.setAttribute('cy', '18');
+  indicator.setAttribute('r', '5');
+  indicator.setAttribute('fill', statusColor);
+  indicator.setAttribute('opacity', '0.8');
+  group.appendChild(indicator);
 }

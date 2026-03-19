@@ -8,6 +8,7 @@ import type { FlowSample } from '@/field/flowField';
 import type { RegionSignature } from '@/field/regionMap';
 import type { PrimitiveState } from '@/geometry/primitiveTypes';
 import type { MotifMemory } from '@/agents/motifMemory';
+import { applyTraversalExtension } from '@/geometry/traversalExtension';
 import { zeroPrimitiveState } from '@/geometry/primitiveState';
 import {
   arcPath, spokePath, ribPath, crescentPath, linePath, quadPath, cubicPath,
@@ -57,6 +58,15 @@ export function createMotifState(
   if (ctx.memory) {
     state = applyClimateInfluence(state, ctx);
   }
+
+  // Apply traversal extension: push stroke endpoints beyond viewport.
+  // Extension scale varies by depth band — mid/front need more extension
+  // to exceed the viewport at their smaller render scale.
+  // Ghost agents are already massive and need less.
+  const extensionScales: Record<string, number> = {
+    ghost: 0.3, back: 0.6, mid: 0.9, front: 1.0,
+  };
+  state = applyTraversalExtension(state, extensionScales[ctx.depthBand] ?? 0.8);
 
   return state;
 }

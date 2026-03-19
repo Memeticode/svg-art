@@ -12,6 +12,7 @@ import { zeroPrimitiveState } from '@/geometry/primitiveState';
 import {
   cubicPath, spiralSegmentPath, brokenArcPath, linePath, jaggedPath,
 } from '@/geometry/pathHelpers';
+import { applyTraversalExtension } from '@/geometry/traversalExtension';
 import { TAU } from '@/shared/math';
 
 export type MacroFormType =
@@ -64,15 +65,15 @@ export function pickMacroFormType(rng: Rng, flow: FlowSample, region: RegionSign
 
 export function createMacroFormState(type: MacroFormType, ctx: MacroFormContext): PrimitiveState {
   switch (type) {
-    case 'warpedContourVeil': return warpedContourVeil(ctx);
-    case 'pressureBand': return pressureBand(ctx);
-    case 'bentManifold': return bentManifold(ctx);
-    case 'partialShellField': return partialShellField(ctx);
-    case 'driftCorridor': return driftCorridor(ctx);
-    case 'pressureVeil': return pressureVeil(ctx);
-    case 'contourScar': return contourScar(ctx);
-    case 'basinRim': return basinRim(ctx);
-    case 'fieldResidue': return fieldResidue(ctx);
+    case 'warpedContourVeil': return applyTraversalExtension(warpedContourVeil(ctx), 0.4);
+    case 'pressureBand': return applyTraversalExtension(pressureBand(ctx), 0.3);
+    case 'bentManifold': return applyTraversalExtension(bentManifold(ctx), 0.3);
+    case 'partialShellField': return applyTraversalExtension(partialShellField(ctx), 0.3);
+    case 'driftCorridor': return applyTraversalExtension(driftCorridor(ctx), 0.4);
+    case 'pressureVeil': return applyTraversalExtension(pressureVeil(ctx), 0.3);
+    case 'contourScar': return applyTraversalExtension(contourScar(ctx), 0.2);
+    case 'basinRim': return applyTraversalExtension(basinRim(ctx), 0.3);
+    case 'fieldResidue': return applyTraversalExtension(fieldResidue(ctx), 0.2);
   }
 }
 
