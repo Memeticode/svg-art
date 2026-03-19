@@ -205,13 +205,23 @@ export function updateAgent(
     }
   }
 
-  // ── Micro-deformations with memory-enhanced directional bias ──
-  const deformIntensity = isGhost ? 0.3 : (1.0 + agent.energy * 0.6);
-  const fieldBias = sample.region.deformationAggression > 0.1
-    ? { angle: sample.flow.angle, strength: sample.region.deformationAggression * 2.5 + 0.3 }
-    : { angle: sample.flow.angle, strength: 0.3 };
+  // ── Climate-authored deformations ──
+  // Intensity varies by region type: fragmented regions get more chaos,
+  // coherent regions get less. Linearity stretches, convergence compresses.
+  let deformIntensity = isGhost ? 0.3 : (1.0 + agent.energy * 0.6);
+  // Fragmented regions: more chaotic
+  deformIntensity *= 1 + sample.region.fragmentation * 0.8;
+  // Coherent regions: calmer but more aligned
+  deformIntensity *= 1 - sample.region.coherence * 0.3;
+  // Linearity: stretch along flow (increase bias strength, not chaos)
+  const linearityStretch = sample.region.linearity * 1.5;
+
+  const fieldBias = {
+    angle: sample.flow.angle,
+    strength: (sample.region.deformationAggression * 2.5 + 0.3 + linearityStretch),
+  };
   // Combine field-derived and memory-derived deformation bias
-  const memBiasStrength = agent.memory.forceExposure * 0.7;
+  const memBiasStrength = agent.memory.forceExposure * 0.8;
   const deformBias = fieldBias
     ? { angle: (fieldBias.angle + agent.memory.dominantForceAngle) * 0.5,
         strength: fieldBias.strength + memBiasStrength }

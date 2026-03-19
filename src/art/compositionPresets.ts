@@ -35,9 +35,9 @@ const DEFAULT_DEPTH_BANDS: Record<DepthBandId, DepthBandConfig> = {
     countWeight: 0.17,
     scaleRange: [3.0, 11.0],
     speedMultiplier: 0.15,
-    opacityRange: [0.10, 0.24],
+    opacityRange: [0.05, 0.16],
     morphRateMultiplier: 0.3,
-    brightnessBias: -0.05,
+    brightnessBias: -0.08,
   },
   back: {
     id: 'back',
@@ -141,11 +141,12 @@ export const COMPOSITION_PRESETS: Record<string, CompositionPreset> = {
     fieldTimeScale: 0.04,
     artDirection: {
       swirlLegibility: 0.7,
-      regionalDialectStrength: 1.6,
-      identityHalfLife: 8,
-      targetDriftStrength: 0.8,
-      antiIconThreshold: 0.40,
+      regionalDialectStrength: 2.0,
+      identityHalfLife: 5,
+      targetDriftStrength: 1.0,
+      antiIconThreshold: 0.30,
       clusterCohesion: 0.8,
+      softReseedThreshold: 0.70,
     },
   },
   'fractal-tide': {

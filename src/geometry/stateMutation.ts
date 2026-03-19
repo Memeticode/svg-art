@@ -63,7 +63,7 @@ export function applyMicroDeform(
       // Flow-aligned directional bias
       const bias = isX ? biasX * pathDrift * 0.6 : biasY * pathDrift * 0.6;
       // Per-coordinate growth/retraction — endpoints drift more than control points
-      const endpointFactor = (coordIdx < 4 || coordIdx > 10) ? 1.3 : 0.8;
+      const endpointFactor = (coordIdx < 4 || coordIdx > 10) ? 1.8 : 0.7;
       coordIdx++;
       return (v + (chaos + bias) * endpointFactor).toFixed(2);
     });

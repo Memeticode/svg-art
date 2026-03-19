@@ -46,12 +46,12 @@ export const DEFAULT_ART_DIRECTION: ArtDirectionConfig = {
   accentEventRarity: 0.55,
   macroFieldPresence: 0.9,
   deformationLag: 0.5,
-  antiIconThreshold: 0.45,
-  identityHalfLife: 8,
-  closureFatigueRate: 0.3,
-  targetDriftStrength: 0.6,
-  memoryDecayRate: 0.002,
-  softReseedThreshold: 0.85,
+  antiIconThreshold: 0.30,
+  identityHalfLife: 5,
+  closureFatigueRate: 0.4,
+  targetDriftStrength: 1.0,
+  memoryDecayRate: 0.001,
+  softReseedThreshold: 0.70,
 };
 
 export function resolveArtDirection(

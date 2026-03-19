@@ -73,8 +73,8 @@ function warpedContourVeil(ctx: MacroFormContext): PrimitiveState {
     const pathAngle = baseAngle + rng.float(-0.3, 0.3);
     const pathPerp = pathAngle + Math.PI / 2;
 
-    // Varied length — some short wisps, some long sweeps
-    const length = rng.float(25, 80);
+    // Shorter wisps — climate traces, not rails
+    const length = rng.float(15, 50);
 
     // Scattered offset — not evenly spaced
     const offset = rng.float(-20, 20);
@@ -95,7 +95,7 @@ function warpedContourVeil(ctx: MacroFormContext): PrimitiveState {
     const ey = Math.sin(pathAngle) * length * 0.5 + oy + shiftY;
 
     state.paths[i] = {
-      active: rng.bool(0.85),
+      active: rng.bool(0.70),
       d: cubicPath(
         sx, sy,
         sx + Math.cos(pathAngle) * length * 0.3 + Math.cos(pathPerp) * drift,
@@ -104,8 +104,8 @@ function warpedContourVeil(ctx: MacroFormContext): PrimitiveState {
         ey - Math.sin(pathAngle) * length * 0.3 + Math.sin(pathPerp) * drift * 0.6,
         ex, ey,
       ),
-      strokeWidth: rng.float(0.3, 0.9),
-      opacity: rng.float(0.25, 0.65),
+      strokeWidth: rng.float(0.2, 0.7),
+      opacity: rng.float(0.15, 0.45),
       dashArray: [],
     };
   }
@@ -288,11 +288,11 @@ function driftCorridor(ctx: MacroFormContext): PrimitiveState {
     const pathAngle = baseAngle + rng.float(-0.25, 0.25);
     const pathPerp = pathAngle + Math.PI / 2;
 
-    // Varied length per path — some are short fragments, others long sweeps
-    const length = rng.float(30, 85);
+    // Shorter fragments — climate traces, not rails
+    const length = rng.float(15, 50);
 
     // Scattered perpendicular offset with gaps
-    const offset = (rng.float(-1, 1) * rng.float(8, 25));
+    const offset = (rng.float(-1, 1) * rng.float(8, 30));
     const ox = Math.cos(perpAngle) * offset;
     const oy = Math.sin(perpAngle) * offset;
 
@@ -310,7 +310,7 @@ function driftCorridor(ctx: MacroFormContext): PrimitiveState {
     const ey = Math.sin(pathAngle) * length * 0.5 + oy + shiftY;
 
     state.paths[i] = {
-      active: rng.bool(0.85), // occasionally skip a path for more organic spacing
+      active: rng.bool(0.70), // 30% gaps — more fragmented, less rail-like
       d: cubicPath(
         sx, sy,
         sx + Math.cos(pathAngle) * length * 0.35 + Math.cos(pathPerp) * laneCurve,
@@ -319,8 +319,8 @@ function driftCorridor(ctx: MacroFormContext): PrimitiveState {
         ey - Math.sin(pathAngle) * length * 0.35 + Math.sin(pathPerp) * laneCurve * 0.5,
         ex, ey,
       ),
-      strokeWidth: rng.float(0.3, 0.9),
-      opacity: rng.float(0.2, 0.6),
+      strokeWidth: rng.float(0.2, 0.7),
+      opacity: rng.float(0.15, 0.45),
       dashArray: [],
     };
   }
