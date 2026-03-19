@@ -30,27 +30,124 @@ export function createMotifState(
   family: MotifFamilyId,
   ctx: MotifGenerationContext,
 ): PrimitiveState {
+  let state: PrimitiveState;
   switch (family) {
-    case 'scaffoldArm': return scaffoldArm(ctx);
-    case 'shellFragment': return shellFragment(ctx);
-    case 'spineRibs': return spineRibs(ctx);
-    case 'splitCrescent': return splitCrescent(ctx);
-    case 'branchStruts': return branchStruts(ctx);
-    case 'pressureResidue': return pressureResidue(ctx);
-    case 'partialEnclosure': return partialEnclosure(ctx);
-    case 'kinkedSpine': return kinkedSpine(ctx);
-    case 'climateFront': return climateFront(ctx);
-    case 'unfoldingFan': return unfoldingFan(ctx);
-    case 'scatterFragment': return scatterFragment(ctx);
-    case 'driftingTendril': return driftingTendril(ctx);
-    case 'brokenCrescent': return brokenCrescentFactory(ctx);
-    case 'splitLobe': return splitLobeFactory(ctx);
-    case 'ribbedSpine': return ribbedSpineFactory(ctx);
-    case 'interruptedShell': return interruptedShellFactory(ctx);
-    case 'knotManifold': return knotManifoldFactory(ctx);
-    case 'pressureFragment': return pressureFragmentFactory(ctx);
-    case 'semiBiologicalScaffold': return semiBiologicalScaffoldFactory(ctx);
+    case 'scaffoldArm': state = scaffoldArm(ctx); break;
+    case 'shellFragment': state = shellFragment(ctx); break;
+    case 'spineRibs': state = spineRibs(ctx); break;
+    case 'splitCrescent': state = splitCrescent(ctx); break;
+    case 'branchStruts': state = branchStruts(ctx); break;
+    case 'pressureResidue': state = pressureResidue(ctx); break;
+    case 'partialEnclosure': state = partialEnclosure(ctx); break;
+    case 'kinkedSpine': state = kinkedSpine(ctx); break;
+    case 'climateFront': state = climateFront(ctx); break;
+    case 'unfoldingFan': state = unfoldingFan(ctx); break;
+    case 'scatterFragment': state = scatterFragment(ctx); break;
+    case 'driftingTendril': state = driftingTendril(ctx); break;
+    case 'brokenCrescent': state = brokenCrescentFactory(ctx); break;
+    case 'splitLobe': state = splitLobeFactory(ctx); break;
+    case 'ribbedSpine': state = ribbedSpineFactory(ctx); break;
+    case 'interruptedShell': state = interruptedShellFactory(ctx); break;
+    case 'knotManifold': state = knotManifoldFactory(ctx); break;
+    case 'pressureFragment': state = pressureFragmentFactory(ctx); break;
+    case 'semiBiologicalScaffold': state = semiBiologicalScaffoldFactory(ctx); break;
   }
+
+  // Apply climate memory influence to the generated state
+  if (ctx.memory) {
+    state = applyClimateInfluence(state, ctx);
+  }
+
+  return state;
+}
+
+/** Post-process generated motif state based on accumulated climate memory.
+ *  Modifies path coordinates to reflect lane stretch, curl bias, front pressure,
+ *  basin compression, and weathering. */
+function applyClimateInfluence(state: PrimitiveState, ctx: MotifGenerationContext): PrimitiveState {
+  const mem = ctx.memory!;
+  const flow = ctx.flow;
+
+  // Skip if no meaningful climate exposure
+  const totalExposure = mem.laneExposure + mem.curlExposure + mem.frontPressure + mem.basinDepth;
+  if (totalExposure < 0.05) return state;
+
+  const flowCos = Math.cos(flow.angle);
+  const flowSin = Math.sin(flow.angle);
+  const perpCos = Math.cos(flow.angle + Math.PI / 2);
+  const perpSin = Math.sin(flow.angle + Math.PI / 2);
+
+  const paths = state.paths.map((p, i) => {
+    if (!p.active) return p;
+
+    let coordIdx = 0;
+    let d = p.d;
+
+    // Lane exposure → stretch along flow direction
+    // Curl exposure → rotate coordinates slightly (spiral bias)
+    // Front pressure → sharpen by scaling perpendicular compression
+    // Basin depth → compress toward center
+    if (mem.laneExposure > 0.05 || mem.curlExposure > 0.05 || mem.frontPressure > 0.05 || mem.basinDepth > 0.05) {
+      const laneStretch = 1 + mem.laneExposure * 0.4;       // stretch along flow up to 1.4x
+      const laneCompress = 1 - mem.laneExposure * 0.2;      // compress perpendicular
+      const curlRotation = mem.curlExposure * 0.15;          // subtle rotation bias
+      const basinScale = 1 - mem.basinDepth * 0.15;          // compression toward center
+
+      const curlCos = Math.cos(curlRotation);
+      const curlSin = Math.sin(curlRotation);
+
+      d = p.d.replace(/-?\d+\.?\d*/g, (match) => {
+        const v = parseFloat(match);
+        const isX = coordIdx % 2 === 0;
+        coordIdx++;
+
+        let result = v;
+
+        // Basin compression: scale toward origin
+        result *= basinScale;
+
+        // Lane stretch: project onto flow/perp axes, stretch flow axis
+        if (isX) {
+          const flowProj = result * flowCos;
+          const perpProj = result * perpCos;
+          result = flowProj * laneStretch + perpProj * laneCompress;
+        } else {
+          const flowProj = result * flowSin;
+          const perpProj = result * perpSin;
+          result = flowProj * laneStretch + perpProj * laneCompress;
+        }
+
+        // Curl rotation
+        if (isX) {
+          result = result * curlCos;
+        } else {
+          result = result * curlCos + v * curlSin * 0.1;
+        }
+
+        return result.toFixed(2);
+      });
+    }
+
+    // Front pressure → thicker strokes on leading-edge paths (first few slots)
+    const frontWidthBoost = i < 4 ? mem.frontPressure * 0.8 : 0;
+    const newWidth = p.strokeWidth * (1 + frontWidthBoost);
+
+    // Climate scar intensity → add dash arrays for reduced confidence
+    let dashArray = p.dashArray;
+    if (mem.climateScarIntensity > 0.3 && dashArray.length === 0) {
+      const scarGap = 4 + (1 - mem.climateScarIntensity) * 6;
+      const scarDash = 3 + mem.climateScarIntensity * 5;
+      dashArray = [scarDash, scarGap];
+    }
+
+    // Shell collapse bias → reduce opacity on enclosure-like paths (later slots)
+    const collapseOpacity = i >= 4 ? 1 - mem.shellCollapseBias * 0.3 : 1;
+    const newOpacity = p.opacity * collapseOpacity;
+
+    return { ...p, d, strokeWidth: newWidth, opacity: newOpacity, dashArray };
+  }) as PrimitiveState['paths'];
+
+  return { paths };
 }
 
 // ── Family: Radial Cluster ──

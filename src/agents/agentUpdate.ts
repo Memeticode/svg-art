@@ -71,8 +71,10 @@ export function updateAgent(
   agent.xNorm += agent.vx * dt;
   agent.yNorm += agent.vy * dt;
 
-  // Soft wrap — ghosts allowed further offscreen (partial offscreen forms)
-  const wrapMargin = isGhost ? 0.15 : 0.05;
+  // Soft wrap — wide margins for off-screen continuity
+  // The world extends beyond the frame; agents live partially off-screen
+  const wrapMargins: Record<string, number> = { ghost: 0.25, back: 0.15, mid: 0.10, front: 0.08 };
+  const wrapMargin = wrapMargins[agent.depthBand] ?? 0.10;
   if (agent.xNorm < -wrapMargin) agent.xNorm = 1 + wrapMargin;
   else if (agent.xNorm > 1 + wrapMargin) agent.xNorm = -wrapMargin;
   if (agent.yNorm < -wrapMargin) agent.yNorm = 1 + wrapMargin;

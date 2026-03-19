@@ -185,47 +185,52 @@ export function accumulateMemory(
   }
 
   // ── Climate causality channels ──
+  // Asymmetric rates: accumulate ~2x, decay ~0.5x
+  // Motifs adapt to new climate faster than they heal from old exposure.
+  // The field feels weathered, not merely responsive.
 
   // Lane exposure: grows when agent is in a flow lane (high linearity + high magnitude)
   const laneSignal = region.linearity * flow.magnitude;
-  memory.laneExposure += laneSignal * 0.006 * dt;
-  memory.laneExposure = Math.max(0, memory.laneExposure - 0.001 * dt);
+  memory.laneExposure += laneSignal * 0.012 * dt;                      // 2x accumulation
+  memory.laneExposure = Math.max(0, memory.laneExposure - 0.0005 * dt); // 0.5x decay
   memory.laneExposure = clamp(memory.laneExposure, 0, 1);
 
   // Basin depth: grows in convergence zones
-  memory.basinDepth += flow.convergenceZone * 0.008 * dt;
-  memory.basinDepth = Math.max(0, memory.basinDepth - 0.002 * dt);
+  memory.basinDepth += flow.convergenceZone * 0.016 * dt;
+  memory.basinDepth = Math.max(0, memory.basinDepth - 0.001 * dt);
   memory.basinDepth = clamp(memory.basinDepth, 0, 1);
 
   // Curl exposure: accumulated curl intensity
-  memory.curlExposure += Math.abs(flow.curl) * 0.005 * dt;
-  memory.curlExposure = Math.max(0, memory.curlExposure - 0.001 * dt);
+  memory.curlExposure += Math.abs(flow.curl) * 0.010 * dt;
+  memory.curlExposure = Math.max(0, memory.curlExposure - 0.0005 * dt);
   memory.curlExposure = clamp(memory.curlExposure, 0, 1);
 
   // Front pressure: grows near convergence fronts with high flow
   const frontSignal = flow.convergenceZone * flow.magnitude;
-  memory.frontPressure += frontSignal * 0.007 * dt;
-  memory.frontPressure = Math.max(0, memory.frontPressure - 0.002 * dt);
+  memory.frontPressure += frontSignal * 0.014 * dt;
+  memory.frontPressure = Math.max(0, memory.frontPressure - 0.001 * dt);
   memory.frontPressure = clamp(memory.frontPressure, 0, 1);
 
-  // Shell collapse bias: grows when closure presence is fragmenting (high closure + high fragmentation)
+  // Shell collapse bias: grows when closure presence is fragmenting
   const collapseSignal = pathClosurePresence * region.fragmentation;
-  memory.shellCollapseBias += collapseSignal * 0.006 * dt;
-  memory.shellCollapseBias = Math.max(0, memory.shellCollapseBias - 0.001 * dt);
+  memory.shellCollapseBias += collapseSignal * 0.012 * dt;
+  memory.shellCollapseBias = Math.max(0, memory.shellCollapseBias - 0.0005 * dt);
   memory.shellCollapseBias = clamp(memory.shellCollapseBias, 0, 1);
 
-  // Spine bend memory: EMA of flow curvature magnitude (curl as proxy)
-  memory.spineBendMemory = lerp(memory.spineBendMemory, Math.abs(flow.curl) * 0.5, 0.004);
+  // Spine bend memory: EMA of flow curvature magnitude
+  memory.spineBendMemory = lerp(memory.spineBendMemory, Math.abs(flow.curl) * 0.5, 0.006);
   memory.spineBendMemory = clamp(memory.spineBendMemory, 0, 1);
 
   // Lobe dominance: tracks asymmetric path spatial distribution
   const asymmetry = measurePathAsymmetry(currentState);
-  memory.lobeDominance = lerp(memory.lobeDominance, asymmetry, 0.003);
+  memory.lobeDominance = lerp(memory.lobeDominance, asymmetry, 0.005);
   memory.lobeDominance = clamp(memory.lobeDominance, 0, 1);
 
-  // Climate scar intensity: overall weatheredness — compound of all climate exposure
+  // Climate scar intensity: overall weatheredness — scars linger longest
+  // Accumulate ~1.5x, decay ~0.3x
   const weatherSignal = (memory.laneExposure + memory.curlExposure + memory.frontPressure + memory.basinDepth) * 0.25;
-  memory.climateScarIntensity = lerp(memory.climateScarIntensity, weatherSignal, 0.003);
+  memory.climateScarIntensity += Math.max(0, weatherSignal - memory.climateScarIntensity) * 0.005 * dt;
+  memory.climateScarIntensity = Math.max(0, memory.climateScarIntensity - 0.0003 * dt);
   memory.climateScarIntensity = clamp(memory.climateScarIntensity, 0, 1);
 }
 

@@ -2,14 +2,15 @@
 
 import type { MorphAgent } from '@/agents/MorphAgent';
 import type { FieldSampler } from '@/field/fieldSampler';
+import type { ClimateController } from '@/field/climateController';
 import type { Viewport } from '@/shared/types';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
-export type DebugMode = 'regions' | 'flow' | 'density' | 'families' | 'comfort' | 'climate' | 'memory' | 'causality';
+export type DebugMode = 'regions' | 'flow' | 'density' | 'families' | 'comfort' | 'climate' | 'memory' | 'causality' | 'timescales';
 
 export interface DebugOverlays {
-  update(agents: MorphAgent[], sampler: FieldSampler, viewport: Viewport, timeSec: number): void;
+  update(agents: MorphAgent[], sampler: FieldSampler, viewport: Viewport, timeSec: number, climate?: ClimateController): void;
   setModes(modes: DebugMode[]): void;
   destroy(): void;
 }
@@ -40,7 +41,7 @@ export function createDebugOverlays(svg: SVGSVGElement): DebugOverlays {
     }
   }
 
-  function update(agents: MorphAgent[], sampler: FieldSampler, viewport: Viewport, timeSec: number): void {
+  function update(agents: MorphAgent[], sampler: FieldSampler, viewport: Viewport, timeSec: number, climate?: ClimateController): void {
     group.innerHTML = '';
     if (activeModes.length === 0) return;
 
@@ -72,6 +73,9 @@ export function createDebugOverlays(svg: SVGSVGElement): DebugOverlays {
           break;
         case 'causality':
           renderCausality(group, agents, sampler, viewport, timeSec);
+          break;
+        case 'timescales':
+          if (climate) renderTimescales(group, climate, viewport);
           break;
       }
     }
@@ -300,5 +304,70 @@ function renderCausality(
     line.setAttribute('stroke-width', String(1 + influence * 1.5));
     line.setAttribute('opacity', String(0.3 + influence * 0.4));
     group.appendChild(line);
+  }
+}
+
+// ── Timescales overlay: deep attractors and pressure fronts ──
+function renderTimescales(
+  group: SVGGElement, climate: ClimateController, viewport: Viewport,
+): void {
+  const s = climate.state;
+
+  // Draw deep attractors as pulsing circles
+  for (const a of s.attractors) {
+    const cx = a.position.x * viewport.width;
+    const cy = a.position.y * viewport.height;
+    const r = a.radius * Math.min(viewport.width, viewport.height) * 0.5;
+
+    // Influence radius ring
+    const ring = document.createElementNS(SVG_NS, 'circle');
+    ring.setAttribute('cx', String(cx));
+    ring.setAttribute('cy', String(cy));
+    ring.setAttribute('r', String(r));
+    ring.setAttribute('fill', 'none');
+    ring.setAttribute('stroke', `hsla(200, 70%, 60%, ${a.strength * 0.3})`);
+    ring.setAttribute('stroke-width', '1');
+    ring.setAttribute('stroke-dasharray', '4 3');
+    group.appendChild(ring);
+
+    // Center dot
+    const dot = document.createElementNS(SVG_NS, 'circle');
+    dot.setAttribute('cx', String(cx));
+    dot.setAttribute('cy', String(cy));
+    dot.setAttribute('r', String(3 + a.strength * 4));
+    dot.setAttribute('fill', `hsla(200, 80%, 60%, ${0.4 + a.strength * 0.3})`);
+    group.appendChild(dot);
+  }
+
+  // Draw pressure fronts as lines with direction arrows
+  for (const f of s.fronts) {
+    const fx = f.position.x * viewport.width;
+    const fy = f.position.y * viewport.height;
+    const perpX = -f.direction.y;
+    const perpY = f.direction.x;
+    const halfLen = f.width * Math.min(viewport.width, viewport.height) * 2;
+
+    // Front line (perpendicular to direction)
+    const line = document.createElementNS(SVG_NS, 'line');
+    line.setAttribute('x1', String(fx + perpX * halfLen));
+    line.setAttribute('y1', String(fy + perpY * halfLen));
+    line.setAttribute('x2', String(fx - perpX * halfLen));
+    line.setAttribute('y2', String(fy - perpY * halfLen));
+    line.setAttribute('stroke', `hsla(0, 70%, 55%, ${f.intensity * 0.5})`);
+    line.setAttribute('stroke-width', String(1 + f.intensity * 2));
+    group.appendChild(line);
+
+    // Direction arrow from center
+    const arrowLen = 15;
+    const ax = fx + f.direction.x * arrowLen;
+    const ay = fy + f.direction.y * arrowLen;
+    const arrow = document.createElementNS(SVG_NS, 'line');
+    arrow.setAttribute('x1', String(fx));
+    arrow.setAttribute('y1', String(fy));
+    arrow.setAttribute('x2', String(ax));
+    arrow.setAttribute('y2', String(ay));
+    arrow.setAttribute('stroke', `hsla(30, 80%, 60%, ${f.intensity * 0.6})`);
+    arrow.setAttribute('stroke-width', '2');
+    group.appendChild(arrow);
   }
 }

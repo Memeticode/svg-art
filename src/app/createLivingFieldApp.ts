@@ -6,6 +6,7 @@ import { createRng } from '@/shared/rng';
 import { createFlowField } from '@/field/flowField';
 import { createRegionMap } from '@/field/regionMap';
 import { createFieldSampler } from '@/field/fieldSampler';
+import { createClimateController } from '@/field/climateController';
 import { createAgentSystem } from '@/agents/AgentSystem';
 import { createSvgScene } from '@/render/SvgScene';
 import { createSvgPool } from '@/render/SvgPool';
@@ -33,12 +34,13 @@ export function createLivingFieldApp(
   let currentPreset: CompositionPreset = getPreset(presetId);
   let currentPalette: PalettePreset = getPalette(currentPreset.paletteId);
 
+  const climate = createClimateController(rng.fork('climate'));
   const flowField = createFlowField(rng.fork('flow'), {
     baseFrequency: currentPreset.fieldFrequency,
     timeScale: currentPreset.fieldTimeScale,
-  });
+  }, climate);
   const regionMap = createRegionMap(rng.fork('regions'));
-  const sampler = createFieldSampler(flowField, regionMap);
+  const sampler = createFieldSampler(flowField, regionMap, climate);
 
   // ── Scene and rendering ──
   const scene = createSvgScene(container);
@@ -77,6 +79,9 @@ export function createLivingFieldApp(
   const loop = createAnimationLoop((dt, timeSec) => {
     const viewport = resizeHandler.getViewport();
 
+    // Advance climate state (attractors, fronts, seasonal phase)
+    climate.update(dt);
+
     // Update simulation
     agentSystem.update(dt, timeSec);
 
@@ -88,7 +93,7 @@ export function createLivingFieldApp(
     agentRenderer.render(snapshots);
 
     // Debug overlays (no-op when no modes active)
-    debugOverlays.update(agentSystem.agents, sampler, viewport, timeSec);
+    debugOverlays.update(agentSystem.agents, sampler, viewport, timeSec, climate);
   }, pauseWhenHidden);
 
   function handleResize(viewport: Viewport): void {

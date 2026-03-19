@@ -158,27 +158,43 @@ export function spawnInitialAgents(
   );
 
   const agents: MorphAgent[] = [];
-  const uniformCount = Math.ceil(count * 0.4);
+  const uniformCount = Math.ceil(count * 0.35);
+  const edgeCount = Math.ceil(count * 0.15);
 
-  // Phase 1: uniform seed agents
+  // Phase 1: uniform seed agents (interior)
   for (let i = 0; i < uniformCount; i++) {
     agents.push(spawnAgent(rng.fork(`spawn-${i}`), preset, sampler, 0, undefined, undefined, undefined, artDirection));
   }
 
-  // Phase 2: cluster-spawned agents near existing ones
-  for (let i = uniformCount; i < count; i++) {
-    const attractor = agents[rng.int(0, agents.length - 1)];
-    const regionSample = sampler.sample(attractor.xNorm, attractor.yNorm, 0);
+  // Phase 2: edge-entering agents (off-screen continuity)
+  // Spawn near or beyond viewport edges so forms enter/exit naturally
+  for (let i = uniformCount; i < uniformCount + edgeCount; i++) {
+    const edge = rng.int(0, 3); // 0=left, 1=right, 2=top, 3=bottom
+    let x: number;
+    let y: number;
+    switch (edge) {
+      case 0: x = rng.float(-0.15, -0.02); y = rng.float(0.0, 1.0); break;
+      case 1: x = rng.float(1.02, 1.15); y = rng.float(0.0, 1.0); break;
+      case 2: x = rng.float(0.0, 1.0); y = rng.float(-0.15, -0.02); break;
+      default: x = rng.float(0.0, 1.0); y = rng.float(1.02, 1.15); break;
+    }
+    agents.push(spawnAgent(rng.fork(`spawn-${i}`), preset, sampler, 0, x, y, undefined, artDirection));
+  }
+
+  // Phase 3: cluster-spawned agents near existing ones
+  for (let i = uniformCount + edgeCount; i < count; i++) {
+    const anchor = agents[rng.int(0, agents.length - 1)];
+    const regionSample = sampler.sample(anchor.xNorm, anchor.yNorm, 0);
 
     // Scatter radius modulated by region density (denser = tighter clusters)
     const scatterRadius = 0.05 + (1 - regionSample.region.density) * 0.10;
     const angle = rng.float(0, Math.PI * 2);
     const dist = rng.float(0.02, scatterRadius);
-    const x = clamp(attractor.xNorm + Math.cos(angle) * dist, -0.05, 1.05);
-    const y = clamp(attractor.yNorm + Math.sin(angle) * dist, -0.05, 1.05);
+    const x = clamp(anchor.xNorm + Math.cos(angle) * dist, -0.15, 1.15);
+    const y = clamp(anchor.yNorm + Math.sin(angle) * dist, -0.15, 1.15);
 
     agents.push(
-      spawnAgent(rng.fork(`spawn-${i}`), preset, sampler, 0, x, y, attractor.family, artDirection),
+      spawnAgent(rng.fork(`spawn-${i}`), preset, sampler, 0, x, y, anchor.family, artDirection),
     );
   }
 
