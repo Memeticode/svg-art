@@ -84,7 +84,7 @@ export function createLivingFieldApp(
     bgRenderer.update(timeSec);
 
     // Render
-    const snapshots = agentSystem.getSnapshots(viewport);
+    const snapshots = agentSystem.getSnapshots(viewport, timeSec);
     agentRenderer.render(snapshots);
 
     // Debug overlays (no-op when no modes active)

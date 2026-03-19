@@ -26,9 +26,17 @@ export function updateAgent(
 ): void {
   if (!agent.alive) return;
 
-  const sample = sampler.sample(agent.xNorm, agent.yNorm, timeSec);
   const bandConfig = preset.depthBands[agent.depthBand];
   const isGhost = agent.depthBand === 'ghost';
+
+  // Per-layer flow: each band samples flow at different time scale and spatial offset
+  const flowTimeScales: Record<string, number> = { ghost: 0.4, back: 0.7, mid: 1.0, front: 1.3 };
+  const flowOffsets: Record<string, [number, number]> = {
+    ghost: [0.02, 0.01], back: [0.008, 0.005], mid: [0, 0], front: [-0.005, -0.003],
+  };
+  const tScale = flowTimeScales[agent.depthBand] ?? 1.0;
+  const [fox, foy] = flowOffsets[agent.depthBand] ?? [0, 0];
+  const sample = sampler.sample(agent.xNorm + fox, agent.yNorm + foy, timeSec * tScale);
 
   // ── Motion ──
   const speedTarget = lerp(
@@ -93,14 +101,14 @@ export function updateAgent(
     const neighborCount = neighbors.length - 1;
     if (neighborCount > 0) {
       const avgHeading = Math.atan2(sinSum / neighborCount, cosSum / neighborCount);
-      const alignStrength = sample.region.coherence * 0.15;
+      const alignStrength = sample.region.coherence * 0.25;
       agent.heading = angleLerp(agent.heading, avgHeading, alignStrength);
     }
 
     // Scale harmony: drift toward local median among same-depth-band neighbors
     if (sameBandCount > 0) {
       const avgScale = scaleSum / sameBandCount;
-      agent.scale = lerp(agent.scale, avgScale, 0.005);
+      agent.scale = lerp(agent.scale, avgScale, 0.012);
     }
 
     // Phase coherence: same-band neighbors drift phase toward local average
@@ -114,7 +122,7 @@ export function updateAgent(
       }
       if (phaseCount > 0) {
         const avgPhase = phaseSum / phaseCount;
-        const coherenceStrength = sample.region.coherence * 0.03;
+        const coherenceStrength = sample.region.coherence * 0.06;
         agent.phase = lerp(agent.phase, avgPhase, coherenceStrength);
       }
     }
@@ -133,11 +141,11 @@ export function updateAgent(
 
   // ── Emphasis pulse system ──
   agent.emphasisTimer = Math.max(0, agent.emphasisTimer - dt);
-  if (agent.emphasisTimer <= 0 && agent.energy > 0.7 && sample.region.brightness > 0.6 && !isGhost) {
-    // Trigger emphasis: 2-4 second bright pulse
-    agent.emphasisTimer = 2 + rng.next() * 2;
+  if (agent.emphasisTimer <= 0 && agent.energy > 0.5 && sample.region.brightness > 0.4 && !isGhost) {
+    // Trigger emphasis: 2-5 second bright pulse
+    agent.emphasisTimer = 2 + rng.next() * 3;
   }
-  const emphasisBoost = agent.emphasisTimer > 0 ? 0.15 * Math.sin(agent.emphasisTimer * 0.8) : 0;
+  const emphasisBoost = agent.emphasisTimer > 0 ? 0.15 * Math.sin(agent.emphasisTimer * 0.6) : 0;
 
   // ── Opacity: gentle breathing + emphasis ──
   const breathe = Math.sin(agent.phase * 0.4) * 0.05;
@@ -146,7 +154,7 @@ export function updateAgent(
     bandConfig.opacityRange[0] * 0.5,
     bandConfig.opacityRange[1] * 1.3,
   );
-  agent.opacity = lerp(agent.opacity, targetOpacity, 0.02);
+  agent.opacity = lerp(agent.opacity, targetOpacity, 0.025);
 
   // Quiet basin suppression: reduce opacity in low-magnitude regions
   if (artDirection && sample.flow.magnitude < 0.3) {
@@ -198,12 +206,12 @@ export function updateAgent(
   }
 
   // ── Micro-deformations with memory-enhanced directional bias ──
-  const deformIntensity = isGhost ? 0.2 : (0.8 + agent.energy * 0.5);
-  const fieldBias = sample.region.deformationAggression > 0.3
-    ? { angle: sample.flow.angle, strength: sample.region.deformationAggression * 2.0 }
-    : undefined;
+  const deformIntensity = isGhost ? 0.3 : (1.0 + agent.energy * 0.6);
+  const fieldBias = sample.region.deformationAggression > 0.1
+    ? { angle: sample.flow.angle, strength: sample.region.deformationAggression * 2.5 + 0.3 }
+    : { angle: sample.flow.angle, strength: 0.3 };
   // Combine field-derived and memory-derived deformation bias
-  const memBiasStrength = agent.memory.forceExposure * 0.5;
+  const memBiasStrength = agent.memory.forceExposure * 0.7;
   const deformBias = fieldBias
     ? { angle: (fieldBias.angle + agent.memory.dominantForceAngle) * 0.5,
         strength: fieldBias.strength + memBiasStrength }

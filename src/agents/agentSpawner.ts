@@ -12,7 +12,7 @@ import { createMacroFormState, pickMacroFormType } from '@/art/macroFormFactorie
 import { applyArtDirectionPenalty } from '@/art/postFilter';
 import { clonePrimitiveState } from '@/geometry/primitiveState';
 import { agentCountForViewport } from '@/shared/perf';
-import { clamp } from '@/shared/math';
+import { clamp, lerp } from '@/shared/math';
 import { createMotifMemory } from './motifMemory';
 
 let nextId = 0;
@@ -104,8 +104,8 @@ export function spawnAgent(
     ? createMacroFormState(macroFormType, { ...motifCtx, rng: rng.fork(id + '-target') })
     : createMotifState(family, { ...motifCtx, rng: rng.fork(id + '-target') });
 
-  // Apply art direction penalties (circle suppression, closure penalty) — not needed for macro forms
-  if (artDirection && !isGhost) {
+  // Apply art direction penalties (no-circle doctrine, closure breaking)
+  if (artDirection) {
     sourceState = applyArtDirectionPenalty(sourceState, artDirection);
     targetState = applyArtDirectionPenalty(targetState, artDirection);
   }
@@ -120,7 +120,10 @@ export function spawnAgent(
     heading: sample.flow.angle,
     scale: rng.float(bandConfig.scaleRange[0], bandConfig.scaleRange[1]),
     rotationDeg: rng.float(0, 360),
-    opacity: rng.float(bandConfig.opacityRange[0], bandConfig.opacityRange[1]),
+    opacity: rng.float(
+      lerp(bandConfig.opacityRange[0], bandConfig.opacityRange[1], 0.3),
+      bandConfig.opacityRange[1],
+    ),
     energy,
     ageSec: 0,
     phase: rng.float(0, Math.PI * 2),

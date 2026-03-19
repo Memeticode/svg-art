@@ -1,6 +1,6 @@
 // ── SvgPool: preallocates and reuses SVG group nodes for agents ──
 
-import { PATH_SLOT_COUNT, CIRCLE_SLOT_COUNT } from '@/geometry/primitiveTypes';
+import { TOTAL_PATH_ELEMENTS, CIRCLE_SLOT_COUNT } from '@/geometry/primitiveTypes';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -24,9 +24,10 @@ function createAgentGroup(): PooledAgentNode {
   group.style.willChange = 'transform, opacity';
 
   const paths: SVGPathElement[] = [];
-  for (let i = 0; i < PATH_SLOT_COUNT; i++) {
+  for (let i = 0; i < TOTAL_PATH_ELEMENTS; i++) {
     const p = document.createElementNS(SVG_NS, 'path');
     p.setAttribute('fill', 'none');
+    p.setAttribute('stroke-linecap', 'round');
     group.appendChild(p);
     paths.push(p);
   }

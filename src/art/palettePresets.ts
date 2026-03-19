@@ -18,10 +18,10 @@ export const PALETTES: Record<string, PalettePreset> = {
   },
   'violet-glow': {
     id: 'violet-glow',
-    backgroundStops: ['#0a0612', '#10081f', '#0d0618'],
-    strokeBase: ['#a78bfa', '#818cf8', '#c084fc', '#93c5fd'],
-    glowAccent: ['#8b5cf6', '#a855f7', '#6366f1'],
-    fillBase: ['rgba(167,139,250,0.10)', 'rgba(129,140,248,0.08)', 'rgba(192,132,252,0.09)'],
+    backgroundStops: ['#0c0818', '#130b25', '#0f081e'],
+    strokeBase: ['#c4b5fd', '#a5b4fc', '#d8b4fe', '#bfdbfe'],
+    glowAccent: ['#a78bfa', '#c084fc', '#818cf8'],
+    fillBase: ['rgba(167,139,250,0.18)', 'rgba(129,140,248,0.14)', 'rgba(192,132,252,0.16)'],
   },
   'pale-gold': {
     id: 'pale-gold',

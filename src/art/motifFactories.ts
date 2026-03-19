@@ -87,7 +87,7 @@ function radialCluster(ctx: MotifGenerationContext): PrimitiveState {
       ),
       strokeWidth: rng.float(0.5, 1.5),
       opacity: rng.float(0.3, 0.7),
-      dashArray: rng.bool(0.3) ? [rng.float(2, 6), rng.float(2, 4)] : [],
+      dashArray: [],
     };
   }
 
@@ -116,7 +116,7 @@ function radialCluster(ctx: MotifGenerationContext): PrimitiveState {
         rng.float(3, 8), arcStart, arcStart + rng.float(0.6, 1.5)),
       strokeWidth: rng.float(0.3, 0.8),
       opacity: rng.float(0.2, 0.5),
-      dashArray: rng.bool(0.4) ? [rng.float(2, 5), rng.float(1, 3)] : [],
+      dashArray: [],
     };
   }
 
@@ -142,7 +142,7 @@ function interruptedHalo(ctx: MotifGenerationContext): PrimitiveState {
       d: arcPath(0, 0, segR, segStart, segStart + segSweep),
       strokeWidth: rng.float(0.6, 1.8),
       opacity: rng.float(0.4, 0.8),
-      dashArray: rng.bool(0.4) ? [rng.float(3, 8), rng.float(2, 5)] : [],
+      dashArray: [],
     };
   }
 
@@ -174,7 +174,7 @@ function interruptedHalo(ctx: MotifGenerationContext): PrimitiveState {
     d: fracturedShellPath(0, 0, r * rng.float(0.8, 0.95), rng.int(2, 3), 0.45, rng.float(1, 3)),
     strokeWidth: rng.float(0.5, 1.5),
     opacity: rng.float(0.3, 0.6),
-    dashArray: rng.bool(0.4) ? [rng.float(3, 7), rng.float(2, 4)] : [],
+    dashArray: [],
   };
 
   // Paths 6-7: split-node marks at gap positions (replace circles)
@@ -237,7 +237,7 @@ function spineRibs(ctx: MotifGenerationContext): PrimitiveState {
     d: quadPath(-sx + ox, -sy + oy, cpx + ox, cpy + oy, sx + ox, sy + oy),
     strokeWidth: rng.float(0.4, 1.2),
     opacity: rng.float(0.25, 0.5),
-    dashArray: [rng.float(3, 7), rng.float(2, 4)],
+    dashArray: [],
   };
 
   // Paths 2-4: ribs
@@ -314,7 +314,7 @@ function splitCrescent(ctx: MotifGenerationContext): PrimitiveState {
       d: arcPath(0, 0, accentR, accentAngle, accentAngle + accentSweep),
       strokeWidth: rng.float(0.4, 1.0),
       opacity: rng.float(0.2, 0.5),
-      dashArray: rng.bool(0.4) ? [rng.float(2, 5), rng.float(1, 3)] : [],
+      dashArray: [],
     };
   }
 
@@ -370,7 +370,7 @@ function branchStruts(ctx: MotifGenerationContext): PrimitiveState {
       d: linePath(bx, by, endX, endY),
       strokeWidth: rng.float(0.5, 1.5),
       opacity: rng.float(0.35, 0.7),
-      dashArray: rng.bool(0.3) ? [rng.float(3, 6), rng.float(2, 4)] : [],
+      dashArray: [],
     };
   }
 
@@ -380,7 +380,7 @@ function branchStruts(ctx: MotifGenerationContext): PrimitiveState {
     d: spokePath(0, 0, baseAngle + Math.PI + rng.float(-0.3, 0.3), 0, trunkLen * 0.3),
     strokeWidth: rng.float(0.4, 1.0),
     opacity: rng.float(0.2, 0.45),
-    dashArray: [rng.float(2, 5), rng.float(1, 3)],
+    dashArray: [],
   };
 
   // Paths 6-7: split-node endpoint marks (replace circles)
@@ -424,7 +424,7 @@ function orbitalNodes(ctx: MotifGenerationContext): PrimitiveState {
         [{ at: rng.float(0.3, 0.7), width: rng.float(0.06, 0.14) }]),
       strokeWidth: rng.float(0.6, 1.8),
       opacity: rng.float(0.4, 0.8),
-      dashArray: rng.bool(0.3) ? [rng.float(2, 5), rng.float(1, 3)] : [],
+      dashArray: [],
     };
   }
 
@@ -475,7 +475,7 @@ function orbitalNodes(ctx: MotifGenerationContext): PrimitiveState {
       ),
       strokeWidth: rng.float(0.3, 0.8),
       opacity: rng.float(0.2, 0.45),
-      dashArray: [rng.float(2, 4), rng.float(1, 3)],
+      dashArray: [],
     };
   }
 
@@ -506,7 +506,7 @@ function partialEnclosure(ctx: MotifGenerationContext): PrimitiveState {
     d: arcPath(0, 0, encR * rng.float(0.7, 0.88), baseAngle + 0.2, baseAngle + encSweep - 0.2),
     strokeWidth: rng.float(0.5, 1.5),
     opacity: rng.float(0.3, 0.6),
-    dashArray: rng.bool(0.5) ? [rng.float(4, 8), rng.float(2, 4)] : [],
+    dashArray: [],
   };
 
   // Paths 2-4: suspended internal elements
@@ -603,7 +603,7 @@ function kinkedSpine(ctx: MotifGenerationContext): PrimitiveState {
       d: kinkedLinePath(startX * 0.6 + offX, startY * 0.6 + offY, kink2X, kink2Y, endX * 0.7 + offX, endY * 0.7 + offY),
       strokeWidth: rng.float(0.5, 1.5),
       opacity: rng.float(0.3, 0.6),
-      dashArray: [rng.float(3, 7), rng.float(2, 5)],
+      dashArray: [],
     };
   }
 
@@ -619,7 +619,7 @@ function kinkedSpine(ctx: MotifGenerationContext): PrimitiveState {
         rng.float(-6, 6), rng.float(-6, 6)),
       strokeWidth: rng.float(0.4, 1.3),
       opacity: rng.float(0.3, 0.65),
-      dashArray: rng.bool(0.3) ? [rng.float(2, 4), rng.float(1, 3)] : [],
+      dashArray: [],
     };
   }
 
@@ -630,7 +630,7 @@ function kinkedSpine(ctx: MotifGenerationContext): PrimitiveState {
                 kinkX + rng.float(-8, 8), kinkY + rng.float(-8, 8)),
     strokeWidth: rng.float(0.3, 0.9),
     opacity: rng.float(0.2, 0.5),
-    dashArray: [rng.float(1, 3), rng.float(1, 2)],
+    dashArray: [],
   };
 
   // Paths 6-7: split-node stress marks at kink vertices (replace circles)
@@ -679,7 +679,7 @@ function eccentricOrbit(ctx: MotifGenerationContext): PrimitiveState {
       d: bentManifoldPath(f.x, f.y, rng.int(2, 3), f.r * rng.float(0.6, 1.0), rng.float(0.5, 2.0)),
       strokeWidth: rng.float(0.7, 2.0),
       opacity: rng.float(0.45, 0.85),
-      dashArray: rng.bool(0.3) ? [rng.float(3, 7), rng.float(2, 4)] : [],
+      dashArray: [],
     };
   }
 
@@ -693,7 +693,7 @@ function eccentricOrbit(ctx: MotifGenerationContext): PrimitiveState {
       d: kinkedLinePath(f0.x, f0.y, kinkX, kinkY, f1.x, f1.y),
       strokeWidth: rng.float(0.4, 1.0),
       opacity: rng.float(0.2, 0.5),
-      dashArray: [rng.float(2, 5), rng.float(1, 3)],
+      dashArray: [],
     };
   }
 
@@ -718,7 +718,7 @@ function eccentricOrbit(ctx: MotifGenerationContext): PrimitiveState {
     ),
     strokeWidth: rng.float(0.3, 0.9),
     opacity: rng.float(0.2, 0.45),
-    dashArray: rng.bool(0.4) ? [rng.float(2, 5), rng.float(1, 3)] : [],
+    dashArray: [],
   };
 
   // Paths 5-7: split-node focal marks (replace circles)
@@ -757,7 +757,7 @@ function unfoldingFan(ctx: MotifGenerationContext): PrimitiveState {
       d: spiralSegmentPath(0, 0, startR, endR, bladeAngle, sweep),
       strokeWidth: rng.float(i === 0 ? 1.0 : 0.5, i === 0 ? 2.5 : 1.5),
       opacity: rng.float(i === 0 ? 0.5 : 0.3, i === 0 ? 0.9 : 0.65),
-      dashArray: i > 0 && rng.bool(0.4) ? [rng.float(3, 6), rng.float(2, 4)] : [],
+      dashArray: [],
     };
   }
 
@@ -771,7 +771,7 @@ function unfoldingFan(ctx: MotifGenerationContext): PrimitiveState {
       d: spiralSegmentPath(0, 0, startR, endR, bladeAngle, rng.float(0.8, 2.0)),
       strokeWidth: rng.float(0.3, 1.0),
       opacity: rng.float(0.2, 0.5),
-      dashArray: rng.bool(0.5) ? [rng.float(2, 4), rng.float(1, 3)] : [],
+      dashArray: [],
     };
   }
 
@@ -781,7 +781,7 @@ function unfoldingFan(ctx: MotifGenerationContext): PrimitiveState {
     d: arcPath(0, 0, rng.float(8, 15), baseAngle, baseAngle + rng.float(0.8, 1.8)),
     strokeWidth: rng.float(0.3, 0.8),
     opacity: rng.float(0.15, 0.4),
-    dashArray: [rng.float(2, 4), rng.float(1, 3)],
+    dashArray: [],
   };
 
   // Split-node marks at blade tips (no circles)
@@ -830,7 +830,7 @@ function scatterFragment(ctx: MotifGenerationContext): PrimitiveState {
       d: jaggedPath(points),
       strokeWidth: rng.float(0.5, 1.8),
       opacity: rng.float(0.4, 0.8),
-      dashArray: rng.bool(0.3) ? [rng.float(2, 5), rng.float(1, 3)] : [],
+      dashArray: [],
     };
   }
 
@@ -844,7 +844,7 @@ function scatterFragment(ctx: MotifGenerationContext): PrimitiveState {
     ),
     strokeWidth: rng.float(0.4, 1.2),
     opacity: rng.float(0.25, 0.6),
-    dashArray: [rng.float(2, 4), rng.float(1, 3)],
+    dashArray: [],
   };
 
   // Path 5: tension scratch — very short accent
@@ -920,7 +920,7 @@ function driftingTendril(ctx: MotifGenerationContext): PrimitiveState {
     d: cubicPath(x1 + ox, y1 + oy, cp1x + ox, cp1y + oy, cp2x + ox, cp2y + oy, x2 + ox, y2 + oy),
     strokeWidth: rng.float(0.4, 1.2),
     opacity: rng.float(0.25, 0.55),
-    dashArray: [rng.float(4, 8), rng.float(3, 6)],
+    dashArray: [],
   };
 
   // Path 2: second offset — even thinner, wider gaps
@@ -932,7 +932,7 @@ function driftingTendril(ctx: MotifGenerationContext): PrimitiveState {
     d: cubicPath(x1 + ox2, y1 + oy2, cp1x + ox2, cp1y + oy2, cp2x + ox2, cp2y + oy2, x2 + ox2, y2 + oy2),
     strokeWidth: rng.float(0.3, 0.8),
     opacity: rng.float(0.15, 0.4),
-    dashArray: [rng.float(2, 5), rng.float(4, 8)],
+    dashArray: [],
   };
 
   // Path 5: subtle branching filament from midpoint
@@ -947,7 +947,7 @@ function driftingTendril(ctx: MotifGenerationContext): PrimitiveState {
                 midY + Math.sin(branchAngle) * branchLen),
     strokeWidth: rng.float(0.3, 0.7),
     opacity: rng.float(0.15, 0.35),
-    dashArray: [rng.float(1, 3), rng.float(1, 2)],
+    dashArray: [],
   };
 
   // Split-node marks at tendril endpoints (no circles)
@@ -1012,7 +1012,7 @@ function brokenCrescentFactory(ctx: MotifGenerationContext): PrimitiveState {
     d: brokenArcPath(0, 0, innerR, baseAngle + rng.float(0.05, 0.2), sweep * rng.float(0.7, 0.95), innerNotches),
     strokeWidth: rng.float(0.5, 1.5),
     opacity: rng.float(0.3, 0.65),
-    dashArray: rng.bool(0.4) ? [rng.float(3, 6), rng.float(2, 4)] : [],
+    dashArray: [],
   };
 
   // Paths 2-3: short tension bars near notch points
@@ -1054,7 +1054,7 @@ function brokenCrescentFactory(ctx: MotifGenerationContext): PrimitiveState {
       d: jaggedPath(pts),
       strokeWidth: rng.float(0.3, 0.9),
       opacity: rng.float(0.2, 0.5),
-      dashArray: rng.bool(0.4) ? [rng.float(2, 4), rng.float(1, 3)] : [],
+      dashArray: [],
     };
   }
 
@@ -1145,7 +1145,7 @@ function splitLobeFactory(ctx: MotifGenerationContext): PrimitiveState {
     d: arcPath(stemX, stemY, lobe1Len * rng.float(0.3, 0.6), lobe1Angle - 0.3, lobe1Angle + rng.float(0.5, 1.2)),
     strokeWidth: rng.float(0.4, 1.0),
     opacity: rng.float(0.2, 0.5),
-    dashArray: [rng.float(2, 5), rng.float(1, 3)],
+    dashArray: [],
   };
 
   // Path 5: accent line between lobes
@@ -1154,7 +1154,7 @@ function splitLobeFactory(ctx: MotifGenerationContext): PrimitiveState {
     d: linePath(l1EndX * 0.5, l1EndY * 0.5, l2EndX * 0.6, l2EndY * 0.6),
     strokeWidth: rng.float(0.3, 0.8),
     opacity: rng.float(0.15, 0.4),
-    dashArray: [rng.float(1, 3), rng.float(1, 2)],
+    dashArray: [],
   };
 
   // Split-node mark at stem junction (no circles)
@@ -1214,7 +1214,7 @@ function ribbedSpineFactory(ctx: MotifGenerationContext): PrimitiveState {
       ),
       strokeWidth: rng.float(0.4, 1.3),
       opacity: rng.float(0.3, 0.7),
-      dashArray: rng.bool(0.25) ? [rng.float(2, 5), rng.float(1, 3)] : [],
+      dashArray: [],
     };
   }
 
@@ -1234,7 +1234,7 @@ function ribbedSpineFactory(ctx: MotifGenerationContext): PrimitiveState {
     ),
     strokeWidth: rng.float(0.3, 0.9),
     opacity: rng.float(0.2, 0.45),
-    dashArray: [rng.float(4, 8), rng.float(3, 6)],
+    dashArray: [],
   };
 
   // Split-node mark at spine midpoint (no circles)
@@ -1297,7 +1297,7 @@ function interruptedShellFactory(ctx: MotifGenerationContext): PrimitiveState {
       ]),
       strokeWidth: rng.float(0.4, 1.0),
       opacity: rng.float(0.25, 0.55),
-      dashArray: rng.bool(0.4) ? [rng.float(2, 5), rng.float(1, 3)] : [],
+      dashArray: [],
     };
   }
 
@@ -1366,7 +1366,7 @@ function knotManifoldFactory(ctx: MotifGenerationContext): PrimitiveState {
     ),
     strokeWidth: rng.float(0.6, 1.5),
     opacity: rng.float(0.3, 0.65),
-    dashArray: rng.bool(0.3) ? [rng.float(3, 6), rng.float(2, 4)] : [],
+    dashArray: [],
   };
 
   // Paths 2-3: tangent extensions from loop edges
@@ -1390,7 +1390,7 @@ function knotManifoldFactory(ctx: MotifGenerationContext): PrimitiveState {
       ),
       strokeWidth: rng.float(0.4, 1.0),
       opacity: rng.float(0.2, 0.5),
-      dashArray: rng.bool(0.4) ? [rng.float(2, 4), rng.float(1, 3)] : [],
+      dashArray: [],
     };
   }
 
@@ -1404,7 +1404,7 @@ function knotManifoldFactory(ctx: MotifGenerationContext): PrimitiveState {
     ),
     strokeWidth: rng.float(0.3, 0.9),
     opacity: rng.float(0.15, 0.4),
-    dashArray: [rng.float(2, 5), rng.float(2, 4)],
+    dashArray: [],
   };
 
   // No circles — pure path-based knot
@@ -1443,7 +1443,7 @@ function pressureFragmentFactory(ctx: MotifGenerationContext): PrimitiveState {
       d: jaggedPath(pts),
       strokeWidth: rng.float(0.5, 1.8),
       opacity: rng.float(0.4, 0.8),
-      dashArray: rng.bool(0.3) ? [rng.float(2, 5), rng.float(1, 3)] : [],
+      dashArray: [],
     };
   }
 
@@ -1547,7 +1547,7 @@ function semiBiologicalScaffoldFactory(ctx: MotifGenerationContext): PrimitiveSt
       ),
       strokeWidth: rng.float(0.4, 1.2),
       opacity: rng.float(0.25, 0.6),
-      dashArray: rng.bool(0.3) ? [rng.float(2, 4), rng.float(1, 3)] : [],
+      dashArray: [],
     };
   }
 
@@ -1562,7 +1562,7 @@ function semiBiologicalScaffoldFactory(ctx: MotifGenerationContext): PrimitiveSt
     ),
     strokeWidth: rng.float(0.3, 0.9),
     opacity: rng.float(0.2, 0.5),
-    dashArray: [rng.float(3, 6), rng.float(2, 4)],
+    dashArray: [],
   };
 
   // Split-node mark at joint point (no circles)

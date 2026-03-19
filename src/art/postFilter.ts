@@ -59,5 +59,11 @@ export function applyArtDirectionPenalty(
     }
   }
 
+  // ── No-circle doctrine: forcibly deactivate all circles and rings ──
+  for (let i = 0; i < 7; i++) {
+    result.circles[i] = { ...result.circles[i], active: false };
+  }
+  result.ring = { ...result.ring, active: false };
+
   return result;
 }

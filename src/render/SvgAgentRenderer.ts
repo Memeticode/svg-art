@@ -1,12 +1,18 @@
 // ── SvgAgentRenderer: applies AgentRenderSnapshots to pooled SVG nodes ──
+// Renders each path as tapered multi-segment strokes (thick → thin).
 
 import type { AgentRenderSnapshot } from '@/agents/MorphAgent';
 import type { DepthBandId } from '@/shared/types';
 import type { SvgScene } from './SvgScene';
 import type { SvgPool, PooledAgentNode } from './SvgPool';
 import type { PrimitiveState } from '@/geometry/primitiveTypes';
-import { PATH_SLOT_COUNT, CIRCLE_SLOT_COUNT } from '@/geometry/primitiveTypes';
-import { ringPath as buildRingPath } from '@/geometry/pathHelpers';
+import { PATH_SLOT_COUNT, CIRCLE_SLOT_COUNT, TAPER_SEGMENTS } from '@/geometry/primitiveTypes';
+import { samplePathPoints } from '@/geometry/pathHelpers';
+
+// Taper profile: stroke-width multiplier per segment (thick → thin)
+const TAPER_WIDTH = [1.0, 0.5, 0.18];
+// Opacity multiplier per segment (full → fading)
+const TAPER_OPACITY = [1.0, 0.7, 0.35];
 
 export interface SvgAgentRenderer {
   render(snapshots: AgentRenderSnapshot[]): void;
@@ -27,10 +33,8 @@ export function createSvgAgentRenderer(
       const parentGroup = scene.layers[snap.depthBand];
       const node = pool.acquire(snap.id, parentGroup);
 
-      // Ensure visible
       node.group.removeAttribute('display');
 
-      // Set group transform and opacity
       node.group.setAttribute(
         'transform',
         `translate(${snap.xPx.toFixed(1)},${snap.yPx.toFixed(1)}) ` +
@@ -39,14 +43,10 @@ export function createSvgAgentRenderer(
       );
       node.group.setAttribute('opacity', snap.opacity.toFixed(3));
 
-      // Apply glow filter based on depth band × opacity thresholds
       applyGlowFilter(node, snap.depthBand, snap.opacity);
-
-      // Apply primitive state to SVG elements
       applyPrimitiveState(node, snap.primitiveState, snap.resolvedStroke, snap.resolvedFill);
     }
 
-    // Release nodes for agents that are no longer in the snapshot set
     for (const prevId of activeIds) {
       if (!currentIds.has(prevId)) {
         const node = pool.getNode(prevId);
@@ -64,27 +64,32 @@ export function createSvgAgentRenderer(
     stroke: string,
     fill: string,
   ): void {
-    // Paths
+    // Paths — rendered as layered strokes for taper effect
+    // Each path is drawn 3 times: thick/bright, medium, thin/faint
+    // The overlapping layers with round linecaps create a natural tapered feel
     for (let i = 0; i < PATH_SLOT_COUNT; i++) {
       const p = state.paths[i];
-      const el = node.paths[i];
+      const baseElIdx = i * TAPER_SEGMENTS;
+
       if (!p.active) {
-        el.setAttribute('display', 'none');
+        for (let s = 0; s < TAPER_SEGMENTS; s++) {
+          node.paths[baseElIdx + s].setAttribute('display', 'none');
+        }
         continue;
       }
-      el.removeAttribute('display');
-      el.setAttribute('d', p.d);
-      el.setAttribute('stroke', stroke);
-      el.setAttribute('stroke-width', p.strokeWidth.toFixed(2));
-      el.setAttribute('opacity', p.opacity.toFixed(3));
-      if (p.dashArray.length > 0) {
-        el.setAttribute('stroke-dasharray', p.dashArray.map(v => v.toFixed(1)).join(' '));
-      } else {
-        el.removeAttribute('stroke-dasharray');
+
+      const baseWidth = Math.max(1.0, p.strokeWidth * 1.8);
+      for (let s = 0; s < TAPER_SEGMENTS; s++) {
+        const el = node.paths[baseElIdx + s];
+        el.removeAttribute('display');
+        el.setAttribute('d', p.d);
+        el.setAttribute('stroke', stroke);
+        el.setAttribute('stroke-width', (baseWidth * TAPER_WIDTH[s]).toFixed(2));
+        el.setAttribute('opacity', (p.opacity * TAPER_OPACITY[s]).toFixed(3));
       }
     }
 
-    // Circles
+    // Circles (mostly inactive per no-circle doctrine)
     for (let i = 0; i < CIRCLE_SLOT_COUNT; i++) {
       const c = state.circles[i];
       const el = node.circles[i];
@@ -108,14 +113,12 @@ export function createSvgAgentRenderer(
       }
     }
 
-    // Ring
+    // Ring (inactive per no-circle doctrine)
     const ring = state.ring;
     if (!ring.active) {
       node.ringPath.setAttribute('display', 'none');
     } else {
       node.ringPath.removeAttribute('display');
-      const d = buildRingPath(ring.cx, ring.cy, ring.r, ring.gapStart, ring.gapEnd);
-      node.ringPath.setAttribute('d', d);
       node.ringPath.setAttribute('stroke', stroke);
       node.ringPath.setAttribute('stroke-width', ring.strokeWidth.toFixed(2));
       node.ringPath.setAttribute('opacity', ring.opacity.toFixed(3));
@@ -130,15 +133,16 @@ export function createSvgAgentRenderer(
         filterId = 'glow-subtle';
         break;
       case 'back':
-        if (opacity > 0.15) filterId = 'glow-subtle';
+        if (opacity > 0.10) filterId = 'glow-subtle';
         break;
       case 'mid':
-        if (opacity > 0.45) filterId = 'glow-medium';
-        else if (opacity > 0.35) filterId = 'glow-subtle';
+        if (opacity > 0.35) filterId = 'glow-medium';
+        else if (opacity > 0.20) filterId = 'glow-subtle';
         break;
       case 'front':
-        if (opacity > 0.65) filterId = 'glow-bright';
-        else if (opacity > 0.55) filterId = 'glow-medium';
+        if (opacity > 0.55) filterId = 'glow-bright';
+        else if (opacity > 0.40) filterId = 'glow-medium';
+        else if (opacity > 0.25) filterId = 'glow-subtle';
         break;
     }
 

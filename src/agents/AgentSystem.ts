@@ -13,10 +13,18 @@ import { spawnInitialAgents } from './agentSpawner';
 import { resolveColors } from '@/art/colorResolvers';
 import { createSpatialGrid } from './spatialGrid';
 
+// Per-band parallax drift: slow time-based offset that differs per layer, creating depth
+const PARALLAX_DRIFT: Record<string, { speed: number; amplitude: number; phaseX: number; phaseY: number }> = {
+  ghost: { speed: 0.008, amplitude: 0.012, phaseX: 0, phaseY: 0.7 },
+  back:  { speed: 0.015, amplitude: 0.020, phaseX: 1.1, phaseY: 2.3 },
+  mid:   { speed: 0.025, amplitude: 0.030, phaseX: 2.7, phaseY: 0.3 },
+  front: { speed: 0.040, amplitude: 0.045, phaseX: 4.1, phaseY: 3.9 },
+};
+
 export interface AgentSystem {
   agents: MorphAgent[];
   update(dt: number, timeSec: number): void;
-  getSnapshots(viewport: Viewport): AgentRenderSnapshot[];
+  getSnapshots(viewport: Viewport, timeSec?: number): AgentRenderSnapshot[];
   reset(viewport: Viewport): void;
 }
 
@@ -49,8 +57,9 @@ export function createAgentSystem(
     }
   }
 
-  function getSnapshots(vp: Viewport): AgentRenderSnapshot[] {
+  function getSnapshots(vp: Viewport, timeSec = 0): AgentRenderSnapshot[] {
     const snapshots: AgentRenderSnapshot[] = [];
+
     for (const agent of agents) {
       if (!agent.alive) continue;
 
@@ -62,10 +71,15 @@ export function createAgentSystem(
         agent.energy,
       );
 
+      // Time-based parallax drift — each band drifts at different speed/phase
+      const pd = PARALLAX_DRIFT[agent.depthBand] ?? PARALLAX_DRIFT.mid;
+      const driftX = Math.sin(timeSec * pd.speed + pd.phaseX) * pd.amplitude;
+      const driftY = Math.cos(timeSec * pd.speed * 0.7 + pd.phaseY) * pd.amplitude;
+
       snapshots.push({
         id: agent.id,
-        xPx: agent.xNorm * vp.width,
-        yPx: agent.yNorm * vp.height,
+        xPx: (agent.xNorm + driftX) * vp.width,
+        yPx: (agent.yNorm + driftY) * vp.height,
         scale: agent.scale,
         rotationDeg: agent.rotationDeg,
         opacity: agent.opacity,

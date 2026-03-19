@@ -31,12 +31,12 @@ export interface DriftContext {
  *  Small per-frame mutations that make the morph destination itself a moving target. */
 export function applyTargetDrift(target: PrimitiveState, ctx: DriftContext): void {
   const { flow, region, memory, dt, phase } = ctx;
-  const driftScale = region.deformationAggression * dt;
-  if (driftScale < 0.0001) return; // calm region, skip drift
+  // Minimum drift floor: no motif should be structurally static
+  const driftScale = Math.max(region.deformationAggression, 0.15) * dt;
 
   const cosA = Math.cos(flow.angle);
   const sinA = Math.sin(flow.angle);
-  const magDrift = flow.magnitude * 0.15 * dt;
+  const magDrift = Math.max(flow.magnitude, 0.1) * 0.15 * dt;
 
   // Drift path control points along flow direction
   for (let i = 0; i < 8; i++) {
@@ -157,22 +157,38 @@ export function applySoftReseed(
       depthBand: agent.depthBand,
       energy: agent.energy,
     });
-    if (artDirection) {
-      newTarget = applyArtDirectionPenalty(newTarget, artDirection);
-    }
+  }
+  // Apply no-circle doctrine to all targets including ghost/macro
+  if (artDirection) {
+    newTarget = applyArtDirectionPenalty(newTarget, artDirection);
   }
   agent.targetState = newTarget;
 
-  agent.morphProgress = 0;
+  // Start at small progress (not 0) so interpolation begins near current visual state
+  agent.morphProgress = 0.08;
   agent.morphDurationSec = rng.float(
     preset.morphDurationRange[0],
     preset.morphDurationRange[1],
   ) / bandConfig.morphRateMultiplier;
   agent.reseedCooldownSec = agent.morphDurationSec * 0.8;
 
-  agent.staggerProfile = generateStaggerProfile(
+  // Keep existing stagger profile — regenerating causes path-level jerk
+  // Only gently adjust it rather than replacing wholesale
+  const oldProfile = agent.staggerProfile;
+  const newProfile = generateStaggerProfile(
     rng.fork(agent.id + '-stagger-' + Math.floor(timeSec)),
   );
+  // Blend old and new stagger profiles for continuity
+  for (let i = 0; i < 8; i++) {
+    oldProfile.pathOffsets[i] = oldProfile.pathOffsets[i] * 0.7 + newProfile.pathOffsets[i] * 0.3;
+  }
+  for (let i = 0; i < 7; i++) {
+    oldProfile.circleOffsets[i] = oldProfile.circleOffsets[i] * 0.7 + newProfile.circleOffsets[i] * 0.3;
+  }
+  oldProfile.ringOffset = oldProfile.ringOffset * 0.7 + newProfile.ringOffset * 0.3;
+
+  // Brief opacity dip to soften the visual transition
+  agent.opacity *= 0.90;
 
   resetPersistenceAge(agent.memory);
   return true;

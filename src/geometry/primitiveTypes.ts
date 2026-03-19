@@ -56,3 +56,5 @@ export interface PrimitiveState {
 
 export const PATH_SLOT_COUNT = 8;
 export const CIRCLE_SLOT_COUNT = 7;
+export const TAPER_SEGMENTS = 3;
+export const TOTAL_PATH_ELEMENTS = PATH_SLOT_COUNT * TAPER_SEGMENTS; // 24

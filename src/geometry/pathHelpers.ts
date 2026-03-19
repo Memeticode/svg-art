@@ -4,7 +4,10 @@
 import type { Vec2 } from '@/shared/types';
 import { TAU } from '@/shared/math';
 
-/** Arc path using SVG A command */
+/** Arc path using SVG A command.
+ *  No-circle doctrine: sweep is hard-capped at MAX_ARC_SWEEP to prevent circular closure. */
+const MAX_ARC_SWEEP = TAU * 0.28; // ~101° — under a quarter circle, prevents circular reading even from composites
+
 export function arcPath(
   cx: number,
   cy: number,
@@ -12,14 +15,25 @@ export function arcPath(
   startAngle: number,
   endAngle: number,
 ): string {
-  const sx = cx + Math.cos(startAngle) * r;
-  const sy = cy + Math.sin(startAngle) * r;
-  const ex = cx + Math.cos(endAngle) * r;
-  const ey = cy + Math.sin(endAngle) * r;
-  const sweep = endAngle - startAngle;
+  // Enforce sweep cap
+  let sweep = endAngle - startAngle;
+  if (Math.abs(sweep) > MAX_ARC_SWEEP) {
+    sweep = Math.sign(sweep) * MAX_ARC_SWEEP;
+    endAngle = startAngle + sweep;
+  }
+
+  // No-circle doctrine: make arcs elliptical (ry ≠ rx) to prevent circular read
+  const rx = r;
+  const ry = r * (0.55 + Math.abs(Math.sin(startAngle * 2.3 + r * 0.1)) * 0.3); // 55-85% of rx
+  const rotation = (startAngle * 180 / Math.PI * 0.3) % 45; // slight axis tilt
+
+  const sx = cx + Math.cos(startAngle) * rx;
+  const sy = cy + Math.sin(startAngle) * ry;
+  const ex = cx + Math.cos(endAngle) * rx;
+  const ey = cy + Math.sin(endAngle) * ry;
   const largeArc = Math.abs(sweep) > Math.PI ? 1 : 0;
   const sweepFlag = sweep > 0 ? 1 : 0;
-  return `M${sx.toFixed(2)} ${sy.toFixed(2)} A${r.toFixed(2)} ${r.toFixed(2)} 0 ${largeArc} ${sweepFlag} ${ex.toFixed(2)} ${ey.toFixed(2)}`;
+  return `M${sx.toFixed(2)} ${sy.toFixed(2)} A${rx.toFixed(2)} ${ry.toFixed(2)} ${rotation.toFixed(1)} ${largeArc} ${sweepFlag} ${ex.toFixed(2)} ${ey.toFixed(2)}`;
 }
 
 /** Straight line segment */
@@ -212,6 +226,10 @@ export function brokenArcPath(
   sweep: number,
   notches: Array<{ at: number; width: number }>,
 ): string {
+  // No-circle doctrine: cap total sweep
+  if (Math.abs(sweep) > MAX_ARC_SWEEP) {
+    sweep = Math.sign(sweep) * MAX_ARC_SWEEP;
+  }
   if (notches.length === 0) {
     return arcPath(cx, cy, r, startAngle, startAngle + sweep);
   }
@@ -496,4 +514,51 @@ export function bentManifoldPath(
     }
   }
   return parts.join(' ');
+}
+
+// ── Path sampling: extract points along a path for tapered rendering ──
+
+/** Parse numeric coordinates from an SVG path d-string, returning [x,y] pairs.
+ *  Extracts all numbers and pairs them as x,y coordinates, then resamples
+ *  at evenly-spaced arc-length positions. */
+export function samplePathPoints(d: string, numPoints: number): Array<[number, number]> {
+  const nums: number[] = [];
+  const matches = d.match(/-?\d+\.?\d*/g);
+  if (!matches) return [];
+
+  for (const m of matches) {
+    nums.push(parseFloat(m));
+  }
+
+  // Build raw coordinate pairs
+  const raw: Array<[number, number]> = [];
+  for (let i = 0; i + 1 < nums.length; i += 2) {
+    raw.push([nums[i], nums[i + 1]]);
+  }
+  if (raw.length < 2) return raw;
+
+  // Compute cumulative arc-length for even spacing
+  const lengths: number[] = [0];
+  for (let i = 1; i < raw.length; i++) {
+    const dx = raw[i][0] - raw[i - 1][0];
+    const dy = raw[i][1] - raw[i - 1][1];
+    lengths.push(lengths[i - 1] + Math.sqrt(dx * dx + dy * dy));
+  }
+  const totalLen = lengths[lengths.length - 1];
+  if (totalLen < 0.01) return [raw[0]];
+
+  // Resample at evenly-spaced arc-length positions
+  const result: Array<[number, number]> = [];
+  for (let p = 0; p < numPoints; p++) {
+    const targetLen = (p / (numPoints - 1)) * totalLen;
+    let seg = 0;
+    while (seg < lengths.length - 2 && lengths[seg + 1] < targetLen) seg++;
+    const segLen = lengths[seg + 1] - lengths[seg];
+    const t = segLen > 0.001 ? (targetLen - lengths[seg]) / segLen : 0;
+    result.push([
+      raw[seg][0] + (raw[seg + 1][0] - raw[seg][0]) * t,
+      raw[seg][1] + (raw[seg + 1][1] - raw[seg][1]) * t,
+    ]);
+  }
+  return result;
 }

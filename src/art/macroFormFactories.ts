@@ -41,11 +41,11 @@ export interface MacroFormContext {
 export function pickMacroFormType(rng: Rng, flow: FlowSample, region: RegionSignature): MacroFormType {
   return rng.weightedPick(MACRO_FORM_TYPES, (type) => {
     switch (type) {
-      case 'warpedContourVeil': return 1.0 + region.coherence * 0.5;
-      case 'pressureBand': return 0.8 + flow.convergenceZone * 1.5;
-      case 'bentManifold': return 0.7 + region.fragmentation * 0.8;
-      case 'partialShellField': return 0.9 + region.closureTendency * 0.6;
-      case 'driftCorridor': return 0.8 + flow.magnitude * 1.0 + region.linearity * 0.5;
+      case 'warpedContourVeil': return 1.8 + region.coherence * 0.5;
+      case 'pressureBand': return 0.3 + flow.convergenceZone * 0.4;
+      case 'bentManifold': return 1.0 + region.fragmentation * 0.8;
+      case 'partialShellField': return 0.15;
+      case 'driftCorridor': return 1.5 + flow.magnitude * 1.0 + region.linearity * 0.5;
     }
   });
 }
@@ -61,38 +61,52 @@ export function createMacroFormState(type: MacroFormType, ctx: MacroFormContext)
 }
 
 // ── Warped Contour Veil ──
-// Parallel cubic curves at gradually shifting offsets — layered atmospheric veil.
+// Scattered flowing curves suggesting atmospheric contour layers — NOT parallel blocks.
 function warpedContourVeil(ctx: MacroFormContext): PrimitiveState {
   const { rng, flow } = ctx;
   const state = zeroPrimitiveState();
-  const baseAngle = flow.angle + rng.float(-0.2, 0.2);
+  const baseAngle = flow.angle + rng.float(-0.3, 0.3);
   const perpAngle = baseAngle + Math.PI / 2;
-  const length = rng.float(60, 90);
 
   for (let i = 0; i < 8; i++) {
-    const offset = (i - 3.5) * rng.float(2, 5);
+    // Per-path angle jitter
+    const pathAngle = baseAngle + rng.float(-0.3, 0.3);
+    const pathPerp = pathAngle + Math.PI / 2;
+
+    // Varied length — some short wisps, some long sweeps
+    const length = rng.float(25, 80);
+
+    // Scattered offset — not evenly spaced
+    const offset = rng.float(-20, 20);
     const ox = Math.cos(perpAngle) * offset;
     const oy = Math.sin(perpAngle) * offset;
-    // Each path slightly deformed from the previous
-    const drift = rng.float(-6, 6) * (i * 0.3);
-    const sx = Math.cos(baseAngle + Math.PI) * length * 0.5 + ox;
-    const sy = Math.sin(baseAngle + Math.PI) * length * 0.5 + oy;
-    const ex = Math.cos(baseAngle) * length * 0.5 + ox;
-    const ey = Math.sin(baseAngle) * length * 0.5 + oy;
+
+    // Stagger along flow
+    const startShift = rng.float(-15, 15);
+    const shiftX = Math.cos(pathAngle) * startShift;
+    const shiftY = Math.sin(pathAngle) * startShift;
+
+    // Strong per-path curvature
+    const drift = rng.float(-15, 15);
+
+    const sx = Math.cos(pathAngle + Math.PI) * length * 0.5 + ox + shiftX;
+    const sy = Math.sin(pathAngle + Math.PI) * length * 0.5 + oy + shiftY;
+    const ex = Math.cos(pathAngle) * length * 0.5 + ox + shiftX;
+    const ey = Math.sin(pathAngle) * length * 0.5 + oy + shiftY;
 
     state.paths[i] = {
-      active: true,
+      active: rng.bool(0.85),
       d: cubicPath(
         sx, sy,
-        sx + Math.cos(baseAngle) * length * 0.3 + Math.cos(perpAngle) * drift,
-        sy + Math.sin(baseAngle) * length * 0.3 + Math.sin(perpAngle) * drift,
-        ex - Math.cos(baseAngle) * length * 0.3 + Math.cos(perpAngle) * drift * 0.7,
-        ey - Math.sin(baseAngle) * length * 0.3 + Math.sin(perpAngle) * drift * 0.7,
+        sx + Math.cos(pathAngle) * length * 0.3 + Math.cos(pathPerp) * drift,
+        sy + Math.sin(pathAngle) * length * 0.3 + Math.sin(pathPerp) * drift,
+        ex - Math.cos(pathAngle) * length * 0.3 + Math.cos(pathPerp) * drift * 0.6,
+        ey - Math.sin(pathAngle) * length * 0.3 + Math.sin(pathPerp) * drift * 0.6,
         ex, ey,
       ),
-      strokeWidth: rng.float(0.3, 0.8),
-      opacity: rng.float(0.3, 0.7),
-      dashArray: i > 4 ? [rng.float(5, 12), rng.float(4, 8)] : [],
+      strokeWidth: rng.float(0.3, 0.9),
+      opacity: rng.float(0.25, 0.65),
+      dashArray: [],
     };
   }
 
@@ -124,7 +138,7 @@ function pressureBand(ctx: MacroFormContext): PrimitiveState {
       ),
       strokeWidth: rng.float(0.3, 0.9),
       opacity: rng.float(0.25, 0.65),
-      dashArray: rng.bool(0.3) ? [rng.float(6, 14), rng.float(4, 8)] : [],
+      dashArray: [],
     };
   }
 
@@ -140,7 +154,7 @@ function pressureBand(ctx: MacroFormContext): PrimitiveState {
       ),
       strokeWidth: rng.float(0.2, 0.6),
       opacity: rng.float(0.15, 0.4),
-      dashArray: [rng.float(4, 8), rng.float(3, 6)],
+      dashArray: [],
     };
   }
 
@@ -153,7 +167,7 @@ function bentManifold(ctx: MacroFormContext): PrimitiveState {
   const { rng } = ctx;
   const state = zeroPrimitiveState();
 
-  // Paths 0-2: large loop crossings
+  // Paths 0-2: large directional sweeps (capped to avoid circular read)
   for (let i = 0; i < 3; i++) {
     const r = rng.float(25, 45);
     const cx = rng.float(-10, 10);
@@ -163,12 +177,12 @@ function bentManifold(ctx: MacroFormContext): PrimitiveState {
       d: spiralSegmentPath(
         cx, cy,
         r * rng.float(0.3, 0.6), r,
-        rng.float(0, TAU), rng.float(3, 6),
+        rng.float(0, TAU), rng.float(1.5, 2.8),
         16,
       ),
       strokeWidth: rng.float(0.4, 1.0),
       opacity: rng.float(0.3, 0.7),
-      dashArray: rng.bool(0.4) ? [rng.float(5, 10), rng.float(3, 6)] : [],
+      dashArray: [],
     };
   }
 
@@ -194,22 +208,22 @@ function bentManifold(ctx: MacroFormContext): PrimitiveState {
       ),
       strokeWidth: rng.float(0.3, 0.8),
       opacity: rng.float(0.2, 0.5),
-      dashArray: [rng.float(4, 8), rng.float(3, 7)],
+      dashArray: [],
     };
   }
 
-  // Paths 6-7: accent spirals
+  // Paths 6-7: accent spirals (capped sweep)
   for (let i = 6; i < 8; i++) {
     state.paths[i] = {
       active: rng.bool(0.5),
       d: spiralSegmentPath(
         rng.float(-15, 15), rng.float(-15, 15),
         rng.float(5, 12), rng.float(18, 30),
-        rng.float(0, TAU), rng.float(2, 4),
+        rng.float(0, TAU), rng.float(1.2, 2.2),
       ),
       strokeWidth: rng.float(0.2, 0.6),
       opacity: rng.float(0.15, 0.35),
-      dashArray: [rng.float(3, 6), rng.float(2, 5)],
+      dashArray: [],
     };
   }
 
@@ -238,7 +252,7 @@ function partialShellField(ctx: MacroFormContext): PrimitiveState {
       ),
       strokeWidth: rng.float(0.3, 0.8),
       opacity: rng.float(0.25, 0.6),
-      dashArray: rng.bool(0.4) ? [rng.float(5, 12), rng.float(3, 7)] : [],
+      dashArray: [],
     };
   }
 
@@ -254,7 +268,7 @@ function partialShellField(ctx: MacroFormContext): PrimitiveState {
       ),
       strokeWidth: rng.float(0.2, 0.6),
       opacity: rng.float(0.15, 0.4),
-      dashArray: [rng.float(4, 8), rng.float(2, 5)],
+      dashArray: [],
     };
   }
 
@@ -262,39 +276,52 @@ function partialShellField(ctx: MacroFormContext): PrimitiveState {
 }
 
 // ── Drift Corridor ──
-// Long parallel paths following flow angle — visible current lanes.
+// Scattered directional paths suggesting current lanes — NOT parallel blocks.
 function driftCorridor(ctx: MacroFormContext): PrimitiveState {
   const { rng, flow } = ctx;
   const state = zeroPrimitiveState();
-  const baseAngle = flow.angle + rng.float(-0.15, 0.15);
+  const baseAngle = flow.angle + rng.float(-0.2, 0.2);
   const perpAngle = baseAngle + Math.PI / 2;
-  const length = rng.float(60, 90);
 
   for (let i = 0; i < 8; i++) {
-    // Increasing perpendicular offset — fan out
-    const offset = (i - 3.5) * rng.float(2, 6);
+    // Per-path angle jitter — breaks parallelism
+    const pathAngle = baseAngle + rng.float(-0.25, 0.25);
+    const pathPerp = pathAngle + Math.PI / 2;
+
+    // Varied length per path — some are short fragments, others long sweeps
+    const length = rng.float(30, 85);
+
+    // Scattered perpendicular offset with gaps
+    const offset = (rng.float(-1, 1) * rng.float(8, 25));
     const ox = Math.cos(perpAngle) * offset;
     const oy = Math.sin(perpAngle) * offset;
-    // Slight per-lane curvature variation
-    const laneCurve = rng.float(-4, 4) + i * rng.float(-1, 1);
-    const sx = Math.cos(baseAngle + Math.PI) * length * 0.5 + ox;
-    const sy = Math.sin(baseAngle + Math.PI) * length * 0.5 + oy;
-    const ex = Math.cos(baseAngle) * length * 0.5 + ox;
-    const ey = Math.sin(baseAngle) * length * 0.5 + oy;
+
+    // Stagger start position along flow direction
+    const startShift = rng.float(-20, 20);
+    const shiftX = Math.cos(pathAngle) * startShift;
+    const shiftY = Math.sin(pathAngle) * startShift;
+
+    // Stronger curvature variation
+    const laneCurve = rng.float(-12, 12);
+
+    const sx = Math.cos(pathAngle + Math.PI) * length * 0.5 + ox + shiftX;
+    const sy = Math.sin(pathAngle + Math.PI) * length * 0.5 + oy + shiftY;
+    const ex = Math.cos(pathAngle) * length * 0.5 + ox + shiftX;
+    const ey = Math.sin(pathAngle) * length * 0.5 + oy + shiftY;
 
     state.paths[i] = {
-      active: true,
+      active: rng.bool(0.85), // occasionally skip a path for more organic spacing
       d: cubicPath(
         sx, sy,
-        sx + Math.cos(baseAngle) * length * 0.35 + Math.cos(perpAngle) * laneCurve,
-        sy + Math.sin(baseAngle) * length * 0.35 + Math.sin(perpAngle) * laneCurve,
-        ex - Math.cos(baseAngle) * length * 0.35 + Math.cos(perpAngle) * laneCurve * 0.6,
-        ey - Math.sin(baseAngle) * length * 0.35 + Math.sin(perpAngle) * laneCurve * 0.6,
+        sx + Math.cos(pathAngle) * length * 0.35 + Math.cos(pathPerp) * laneCurve,
+        sy + Math.sin(pathAngle) * length * 0.35 + Math.sin(pathPerp) * laneCurve,
+        ex - Math.cos(pathAngle) * length * 0.35 + Math.cos(pathPerp) * laneCurve * 0.5,
+        ey - Math.sin(pathAngle) * length * 0.35 + Math.sin(pathPerp) * laneCurve * 0.5,
         ex, ey,
       ),
-      strokeWidth: rng.float(0.3, 0.7),
-      opacity: rng.float(0.25, 0.6) * (1 - Math.abs(i - 3.5) * 0.08), // fade at edges
-      dashArray: i > 5 ? [rng.float(6, 14), rng.float(5, 10)] : rng.bool(0.3) ? [rng.float(8, 16), rng.float(4, 8)] : [],
+      strokeWidth: rng.float(0.3, 0.9),
+      opacity: rng.float(0.2, 0.6),
+      dashArray: [],
     };
   }
 
