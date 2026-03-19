@@ -33,6 +33,10 @@ export interface ArtDirectionConfig {
   memoryDecayRate: number;
   /** Morph progress at which soft reseed triggers (0..1) */
   softReseedThreshold: number;
+  /** Per-slot async drift speed multiplier (0..2) */
+  subpartDriftRate: number;
+  /** How fast overall shape destabilizes (0..1) */
+  silhouetteDecayRate: number;
 }
 
 export const DEFAULT_ART_DIRECTION: ArtDirectionConfig = {
@@ -46,12 +50,14 @@ export const DEFAULT_ART_DIRECTION: ArtDirectionConfig = {
   accentEventRarity: 0.55,
   macroFieldPresence: 0.9,
   deformationLag: 0.5,
-  antiIconThreshold: 0.30,
-  identityHalfLife: 5,
+  antiIconThreshold: 0.22,
+  identityHalfLife: 3,
   closureFatigueRate: 0.4,
   targetDriftStrength: 1.0,
   memoryDecayRate: 0.001,
-  softReseedThreshold: 0.70,
+  softReseedThreshold: 0.60,
+  subpartDriftRate: 0.8,
+  silhouetteDecayRate: 0.6,
 };
 
 export function resolveArtDirection(

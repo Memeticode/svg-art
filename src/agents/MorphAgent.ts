@@ -55,9 +55,7 @@ export interface MorphAgent {
 
 /** Per-slot timing offsets for staggered morph interpolation */
 export interface StaggerProfile {
-  pathOffsets: number[];   // 8 values, range [-0.15, 0.15]
-  circleOffsets: number[]; // 7 values
-  ringOffset: number;
+  pathOffsets: number[];   // 12 values, range [-0.15, 0.15]
 }
 
 /** Render-ready snapshot consumed by the SVG renderer */

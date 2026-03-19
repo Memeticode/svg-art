@@ -32,7 +32,7 @@ export function pickNextFamily(
     // High circularity: favor shell/enclosure families, suppress linear forms
     if (region.circularity > 0.6) {
       if (id === 'interruptedShell' || id === 'partialEnclosure') weight *= 2.0;
-      if (id === 'brokenCrescent' || id === 'interruptedHalo') weight *= 1.5;
+      if (id === 'brokenCrescent' || id === 'shellFragment') weight *= 1.5;
       if (id === 'kinkedSpine' || id === 'driftingTendril') weight *= 0.3;
     }
 
@@ -40,20 +40,20 @@ export function pickNextFamily(
     if (region.linearity > 0.6) {
       if (id === 'spineRibs' || id === 'driftingTendril' || id === 'kinkedSpine') weight *= 2.0;
       if (id === 'branchStruts') weight *= 1.5;
-      if (id === 'orbitalNodes') weight *= 0.3;
+      if (id === 'pressureResidue') weight *= 0.3;
     }
 
     // High fragmentation: favor scatter/kink, suppress cohesive forms
     if (region.fragmentation > 0.6) {
       if (id === 'scatterFragment' || id === 'kinkedSpine') weight *= 2.5;
-      if (id === 'radialCluster') weight *= 0.2;
+      if (id === 'scaffoldArm') weight *= 0.2;
       if (id === 'partialEnclosure') weight *= 0.4;
     }
 
     // High stretch: favor directional fans/tendrils
     if (region.stretch > 0.6) {
       if (id === 'unfoldingFan' || id === 'driftingTendril') weight *= 2.0;
-      if (id === 'radialCluster' || id === 'eccentricOrbit') weight *= 0.5;
+      if (id === 'scaffoldArm' || id === 'climateFront') weight *= 0.5;
     }
 
     // ── New tension-grammar families: regional biases ──

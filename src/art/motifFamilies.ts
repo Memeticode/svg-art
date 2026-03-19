@@ -12,13 +12,13 @@ export interface MotifFamilyDef {
 
 export const MOTIF_FAMILIES: Record<MotifFamilyId, MotifFamilyDef> = {
   // Redesigned families (no circles — scaffold/shell forms)
-  radialCluster: {
-    id: 'radialCluster',
+  scaffoldArm: {
+    id: 'scaffoldArm',
     compatibleWith: ['branchStruts', 'semiBiologicalScaffold', 'pressureFragment'],
     baseWeight: 0.6,
   },
-  interruptedHalo: {
-    id: 'interruptedHalo',
+  shellFragment: {
+    id: 'shellFragment',
     compatibleWith: ['interruptedShell', 'partialEnclosure', 'brokenCrescent'],
     baseWeight: 1.0,
   },
@@ -29,7 +29,7 @@ export const MOTIF_FAMILIES: Record<MotifFamilyId, MotifFamilyDef> = {
   },
   splitCrescent: {
     id: 'splitCrescent',
-    compatibleWith: ['interruptedHalo', 'unfoldingFan', 'partialEnclosure'],
+    compatibleWith: ['shellFragment', 'unfoldingFan', 'partialEnclosure'],
     baseWeight: 0.9,
   },
   branchStruts: {
@@ -37,8 +37,8 @@ export const MOTIF_FAMILIES: Record<MotifFamilyId, MotifFamilyDef> = {
     compatibleWith: ['spineRibs', 'kinkedSpine', 'scatterFragment'],
     baseWeight: 0.8,
   },
-  orbitalNodes: {
-    id: 'orbitalNodes',
+  pressureResidue: {
+    id: 'pressureResidue',
     compatibleWith: ['pressureFragment', 'scatterFragment', 'semiBiologicalScaffold'],
     baseWeight: 0.7,
   },
@@ -54,8 +54,8 @@ export const MOTIF_FAMILIES: Record<MotifFamilyId, MotifFamilyDef> = {
     compatibleWith: ['spineRibs', 'branchStruts', 'scatterFragment'],
     baseWeight: 1.1,
   },
-  eccentricOrbit: {
-    id: 'eccentricOrbit',
+  climateFront: {
+    id: 'climateFront',
     compatibleWith: ['knotManifold', 'interruptedShell', 'splitLobe'],
     baseWeight: 1.0,
   },
@@ -83,7 +83,7 @@ export const MOTIF_FAMILIES: Record<MotifFamilyId, MotifFamilyDef> = {
   },
   splitLobe: {
     id: 'splitLobe',
-    compatibleWith: ['brokenCrescent', 'unfoldingFan', 'eccentricOrbit'],
+    compatibleWith: ['brokenCrescent', 'unfoldingFan', 'climateFront'],
     baseWeight: 1.0,
   },
   ribbedSpine: {
@@ -98,7 +98,7 @@ export const MOTIF_FAMILIES: Record<MotifFamilyId, MotifFamilyDef> = {
   },
   knotManifold: {
     id: 'knotManifold',
-    compatibleWith: ['eccentricOrbit', 'splitLobe', 'driftingTendril'],
+    compatibleWith: ['climateFront', 'splitLobe', 'driftingTendril'],
     baseWeight: 0.9,
   },
   pressureFragment: {

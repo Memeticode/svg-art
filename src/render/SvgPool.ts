@@ -1,14 +1,12 @@
 // ── SvgPool: preallocates and reuses SVG group nodes for agents ──
 
-import { TOTAL_PATH_ELEMENTS, CIRCLE_SLOT_COUNT } from '@/geometry/primitiveTypes';
+import { TOTAL_PATH_ELEMENTS } from '@/geometry/primitiveTypes';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 export interface PooledAgentNode {
   group: SVGGElement;
   paths: SVGPathElement[];
-  circles: SVGCircleElement[];
-  ringPath: SVGPathElement;
   assignedTo: string | null;
 }
 
@@ -32,19 +30,7 @@ function createAgentGroup(): PooledAgentNode {
     paths.push(p);
   }
 
-  const circles: SVGCircleElement[] = [];
-  for (let i = 0; i < CIRCLE_SLOT_COUNT; i++) {
-    const c = document.createElementNS(SVG_NS, 'circle');
-    c.setAttribute('fill', 'none');
-    group.appendChild(c);
-    circles.push(c);
-  }
-
-  const ringPath = document.createElementNS(SVG_NS, 'path');
-  ringPath.setAttribute('fill', 'none');
-  group.appendChild(ringPath);
-
-  return { group, paths, circles, ringPath, assignedTo: null };
+  return { group, paths, assignedTo: null };
 }
 
 export function createSvgPool(): SvgPool {

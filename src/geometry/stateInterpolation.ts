@@ -6,10 +6,8 @@
 import type {
   PrimitiveState,
   PathPrimitiveState,
-  CirclePrimitiveState,
-  RingPrimitiveState,
 } from './primitiveTypes';
-import { PATH_SLOT_COUNT, CIRCLE_SLOT_COUNT } from './primitiveTypes';
+import { PATH_SLOT_COUNT } from './primitiveTypes';
 import { lerp, clamp } from '@/shared/math';
 import type { StaggerProfile } from '@/agents/MorphAgent';
 
@@ -57,35 +55,6 @@ function lerpPath(a: PathPrimitiveState, b: PathPrimitiveState, t: number): Path
   };
 }
 
-function lerpCircle(
-  a: CirclePrimitiveState,
-  b: CirclePrimitiveState,
-  t: number,
-): CirclePrimitiveState {
-  return {
-    active: t < 0.5 ? a.active : b.active,
-    cx: lerp(a.cx, b.cx, t),
-    cy: lerp(a.cy, b.cy, t),
-    r: lerp(a.r, b.r, t),
-    strokeWidth: lerp(a.strokeWidth, b.strokeWidth, t),
-    opacity: lerp(a.opacity, b.opacity, t),
-    fillAlpha: lerp(a.fillAlpha, b.fillAlpha, t),
-  };
-}
-
-function lerpRing(a: RingPrimitiveState, b: RingPrimitiveState, t: number): RingPrimitiveState {
-  return {
-    active: t < 0.5 ? a.active : b.active,
-    cx: lerp(a.cx, b.cx, t),
-    cy: lerp(a.cy, b.cy, t),
-    r: lerp(a.r, b.r, t),
-    strokeWidth: lerp(a.strokeWidth, b.strokeWidth, t),
-    opacity: lerp(a.opacity, b.opacity, t),
-    gapStart: lerp(a.gapStart, b.gapStart, t),
-    gapEnd: lerp(a.gapEnd, b.gapEnd, t),
-  };
-}
-
 export function interpolatePrimitiveState(
   a: PrimitiveState,
   b: PrimitiveState,
@@ -96,16 +65,7 @@ export function interpolatePrimitiveState(
     (paths as PathPrimitiveState[])[i] = lerpPath(a.paths[i], b.paths[i], t);
   }
 
-  const circles = [] as unknown as PrimitiveState['circles'];
-  for (let i = 0; i < CIRCLE_SLOT_COUNT; i++) {
-    (circles as CirclePrimitiveState[])[i] = lerpCircle(a.circles[i], b.circles[i], t);
-  }
-
-  return {
-    paths,
-    circles,
-    ring: lerpRing(a.ring, b.ring, t),
-  };
+  return { paths };
 }
 
 /** Apply a stagger offset to a global t value.
@@ -128,15 +88,5 @@ export function staggeredInterpolatePrimitiveState(
     (paths as PathPrimitiveState[])[i] = lerpPath(a.paths[i], b.paths[i], st);
   }
 
-  const circles = [] as unknown as PrimitiveState['circles'];
-  for (let i = 0; i < CIRCLE_SLOT_COUNT; i++) {
-    const st = staggerT(t, profile.circleOffsets[i] ?? 0);
-    (circles as CirclePrimitiveState[])[i] = lerpCircle(a.circles[i], b.circles[i], st);
-  }
-
-  return {
-    paths,
-    circles,
-    ring: lerpRing(a.ring, b.ring, staggerT(t, profile.ringOffset)),
-  };
+  return { paths };
 }

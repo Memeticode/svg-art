@@ -206,8 +206,7 @@ export function updateAgent(
   }
 
   // ── Climate-authored deformations ──
-  // Intensity varies by region type: fragmented regions get more chaos,
-  // coherent regions get less. Linearity stretches, convergence compresses.
+  // Intensity varies by region type, accumulated memory, and climate exposure.
   let deformIntensity = isGhost ? 0.3 : (1.0 + agent.energy * 0.6);
   // Fragmented regions: more chaotic
   deformIntensity *= 1 + sample.region.fragmentation * 0.8;
@@ -215,13 +214,21 @@ export function updateAgent(
   deformIntensity *= 1 - sample.region.coherence * 0.3;
   // Linearity: stretch along flow (increase bias strength, not chaos)
   const linearityStretch = sample.region.linearity * 1.5;
+  // Climate memory amplifies deformation: weathered motifs deform more
+  deformIntensity *= 1 + agent.memory.climateScarIntensity * 0.5;
+  // Curl exposure amplifies curl-based deformation
+  deformIntensity *= 1 + agent.memory.curlExposure * 0.4;
+  // Front pressure increases deformation intensity near convergence fronts
+  deformIntensity *= 1 + agent.memory.frontPressure * 0.3;
 
   const fieldBias = {
     angle: sample.flow.angle,
     strength: (sample.region.deformationAggression * 2.5 + 0.3 + linearityStretch),
   };
   // Combine field-derived and memory-derived deformation bias
-  const memBiasStrength = agent.memory.forceExposure * 0.8;
+  // Lane exposure increases directional stretch along flow
+  const memBiasStrength = agent.memory.forceExposure * 0.8
+    + agent.memory.laneExposure * 0.6;
   const deformBias = fieldBias
     ? { angle: (fieldBias.angle + agent.memory.dominantForceAngle) * 0.5,
         strength: fieldBias.strength + memBiasStrength }

@@ -36,19 +36,6 @@ export function applyMicroDeform(
   const biasX = deformBias ? Math.cos(deformBias.angle) * deformBias.strength : 0;
   const biasY = deformBias ? Math.sin(deformBias.angle) * deformBias.strength : 0;
 
-  // Circles are doctrinally inactive but handle gracefully
-  const circles = state.circles.map((c, i) => {
-    if (!c.active) return c;
-    return {
-      ...c,
-      cx: c.cx + smoothChaos(phase, i * 3.1) * drift * 1.2 + biasX * drift * 0.5,
-      cy: c.cy + smoothChaos(phase, i * 5.3) * drift * 1.2 + biasY * drift * 0.5,
-      r: clamp(c.r + smoothChaos(phase, i * 7.7) * drift * 0.3, 0.1, 50),
-    };
-  }) as PrimitiveState['circles'];
-
-  const ring = state.ring; // Ring is inactive per no-circle doctrine
-
   // Deform path coordinates with multi-frequency chaos + directional flow bias
   const paths = state.paths.map((p, i) => {
     if (!p.active) return p;
@@ -79,5 +66,5 @@ export function applyMicroDeform(
     return { ...p, d, strokeWidth: newWidth, opacity: newOpacity };
   }) as PrimitiveState['paths'];
 
-  return { paths, circles, ring };
+  return { paths };
 }

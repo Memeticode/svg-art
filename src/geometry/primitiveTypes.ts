@@ -4,13 +4,12 @@
 // slot-to-slot interpolation between any two states.
 //
 // Local motif space: coordinates in [-50, 50]
-// Slot semantics:
-//   paths  0–1: major arcs / primary structural curves
-//   paths  2–4: ribs / struts / secondary structure
-//   paths  5–7: accents / fine detail
-//   circles 0–2: core nodes
-//   circles 3–6: orbital / accent dots
-//   ring: enclosure / halo
+// Slot semantics (path-native, no circles):
+//   paths  0–1:  contour segments (primary structural curves)
+//   paths  2–4:  shell fragments / spine segments
+//   paths  5–7:  scaffold arms / puncture marks
+//   paths  8–9:  lobe edges / manifold traces
+//   paths 10–11: field residue segments
 
 export interface PathPrimitiveState {
   active: boolean;
@@ -20,41 +19,14 @@ export interface PathPrimitiveState {
   dashArray: number[];
 }
 
-export interface CirclePrimitiveState {
-  active: boolean;
-  cx: number;
-  cy: number;
-  r: number;
-  strokeWidth: number;
-  opacity: number;
-  fillAlpha: number;
-}
-
-export interface RingPrimitiveState {
-  active: boolean;
-  cx: number;
-  cy: number;
-  r: number;
-  strokeWidth: number;
-  opacity: number;
-  gapStart: number; // radians
-  gapEnd: number;   // radians
-}
-
 export interface PrimitiveState {
   paths: [
     PathPrimitiveState, PathPrimitiveState, PathPrimitiveState, PathPrimitiveState,
     PathPrimitiveState, PathPrimitiveState, PathPrimitiveState, PathPrimitiveState,
+    PathPrimitiveState, PathPrimitiveState, PathPrimitiveState, PathPrimitiveState,
   ];
-  circles: [
-    CirclePrimitiveState, CirclePrimitiveState, CirclePrimitiveState,
-    CirclePrimitiveState, CirclePrimitiveState, CirclePrimitiveState,
-    CirclePrimitiveState,
-  ];
-  ring: RingPrimitiveState;
 }
 
-export const PATH_SLOT_COUNT = 8;
-export const CIRCLE_SLOT_COUNT = 7;
+export const PATH_SLOT_COUNT = 12;
 export const TAPER_SEGMENTS = 3;
-export const TOTAL_PATH_ELEMENTS = PATH_SLOT_COUNT * TAPER_SEGMENTS; // 24
+export const TOTAL_PATH_ELEMENTS = PATH_SLOT_COUNT * TAPER_SEGMENTS; // 36

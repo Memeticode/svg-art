@@ -6,8 +6,7 @@ import type { DepthBandId } from '@/shared/types';
 import type { SvgScene } from './SvgScene';
 import type { SvgPool, PooledAgentNode } from './SvgPool';
 import type { PrimitiveState } from '@/geometry/primitiveTypes';
-import { PATH_SLOT_COUNT, CIRCLE_SLOT_COUNT, TAPER_SEGMENTS } from '@/geometry/primitiveTypes';
-import { samplePathPoints } from '@/geometry/pathHelpers';
+import { PATH_SLOT_COUNT, TAPER_SEGMENTS } from '@/geometry/primitiveTypes';
 
 // Taper profile: stroke-width multiplier per segment (thick → thin)
 const TAPER_WIDTH = [1.0, 0.5, 0.18];
@@ -62,7 +61,7 @@ export function createSvgAgentRenderer(
     node: PooledAgentNode,
     state: PrimitiveState,
     stroke: string,
-    fill: string,
+    _fill: string,
   ): void {
     // Paths — rendered as layered strokes for taper effect
     // Each path is drawn 3 times: thick/bright, medium, thin/faint
@@ -87,41 +86,6 @@ export function createSvgAgentRenderer(
         el.setAttribute('stroke-width', (baseWidth * TAPER_WIDTH[s]).toFixed(2));
         el.setAttribute('opacity', (p.opacity * TAPER_OPACITY[s]).toFixed(3));
       }
-    }
-
-    // Circles (mostly inactive per no-circle doctrine)
-    for (let i = 0; i < CIRCLE_SLOT_COUNT; i++) {
-      const c = state.circles[i];
-      const el = node.circles[i];
-      if (!c.active) {
-        el.setAttribute('display', 'none');
-        continue;
-      }
-      el.removeAttribute('display');
-      el.setAttribute('cx', c.cx.toFixed(2));
-      el.setAttribute('cy', c.cy.toFixed(2));
-      el.setAttribute('r', Math.max(0.1, c.r).toFixed(2));
-      el.setAttribute('stroke', stroke);
-      el.setAttribute('stroke-width', c.strokeWidth.toFixed(2));
-      el.setAttribute('opacity', c.opacity.toFixed(3));
-      if (c.fillAlpha > 0.01) {
-        el.setAttribute('fill', fill);
-        el.setAttribute('fill-opacity', c.fillAlpha.toFixed(3));
-      } else {
-        el.setAttribute('fill', 'none');
-        el.removeAttribute('fill-opacity');
-      }
-    }
-
-    // Ring (inactive per no-circle doctrine)
-    const ring = state.ring;
-    if (!ring.active) {
-      node.ringPath.setAttribute('display', 'none');
-    } else {
-      node.ringPath.removeAttribute('display');
-      node.ringPath.setAttribute('stroke', stroke);
-      node.ringPath.setAttribute('stroke-width', ring.strokeWidth.toFixed(2));
-      node.ringPath.setAttribute('opacity', ring.opacity.toFixed(3));
     }
   }
 

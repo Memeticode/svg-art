@@ -18,10 +18,11 @@ import { createMotifMemory } from './motifMemory';
 let nextId = 0;
 
 /** Generate a deterministic stagger profile for non-uniform morph timing.
- *  Structural paths lead, detail paths lag, accent circles trail. */
+ *  Structural paths lead, detail paths lag, residue trails. */
 export function generateStaggerProfile(rng: Rng): StaggerProfile {
   return {
-    // paths 0-1 (structural) lead slightly, 5-7 (accents) lag
+    // paths 0-1 (contour segments) lead, 5-7 (scaffold/puncture) lag,
+    // 8-9 (lobe/manifold) trail, 10-11 (residue) trail most
     pathOffsets: [
       rng.float(-0.12, -0.04),  // path 0: leads
       rng.float(-0.10, -0.02),  // path 1: leads
@@ -30,19 +31,12 @@ export function generateStaggerProfile(rng: Rng): StaggerProfile {
       rng.float(-0.02, 0.06),   // path 4: slightly lags
       rng.float(0.02, 0.10),    // path 5: lags
       rng.float(0.03, 0.12),    // path 6: lags
-      rng.float(0.04, 0.15),    // path 7: lags most
+      rng.float(0.04, 0.15),    // path 7: lags most of original set
+      rng.float(0.05, 0.13),    // path 8: lobe edge trails
+      rng.float(0.05, 0.13),    // path 9: manifold trace trails
+      rng.float(0.06, 0.15),    // path 10: residue trails most
+      rng.float(0.06, 0.15),    // path 11: residue trails most
     ],
-    // circles 0-2 (core) track structure, 3-6 (accents) trail
-    circleOffsets: [
-      rng.float(-0.08, 0.02),
-      rng.float(-0.06, 0.03),
-      rng.float(-0.04, 0.04),
-      rng.float(0.02, 0.10),
-      rng.float(0.03, 0.12),
-      rng.float(0.04, 0.13),
-      rng.float(0.05, 0.15),
-    ],
-    ringOffset: rng.float(-0.05, 0.08),
   };
 }
 
@@ -83,12 +77,14 @@ export function spawnAgent(
     preset.morphDurationRange[1],
   ) / bandConfig.morphRateMultiplier;
 
+  const memory = createMotifMemory();
   const motifCtx = {
     rng: rng.fork(id + '-motif'),
     region: sample.region,
     flow: sample.flow,
     depthBand,
     energy,
+    memory,
   };
 
   // Ghost agents use dedicated macro-form factories
@@ -139,7 +135,7 @@ export function spawnAgent(
     emphasisTimer: 0,
     staggerProfile: generateStaggerProfile(rng.fork(id + '-stagger')),
     macroFormType,
-    memory: createMotifMemory(),
+    memory,
   };
 }
 

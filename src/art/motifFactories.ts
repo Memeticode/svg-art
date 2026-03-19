@@ -7,6 +7,7 @@ import type { MotifFamilyId, DepthBandId } from '@/shared/types';
 import type { FlowSample } from '@/field/flowField';
 import type { RegionSignature } from '@/field/regionMap';
 import type { PrimitiveState } from '@/geometry/primitiveTypes';
+import type { MotifMemory } from '@/agents/motifMemory';
 import { zeroPrimitiveState } from '@/geometry/primitiveState';
 import {
   arcPath, spokePath, ribPath, crescentPath, linePath, quadPath, cubicPath,
@@ -22,6 +23,7 @@ export interface MotifGenerationContext {
   flow: FlowSample;
   depthBand: DepthBandId;
   energy: number;
+  memory?: MotifMemory;
 }
 
 export function createMotifState(
@@ -29,15 +31,15 @@ export function createMotifState(
   ctx: MotifGenerationContext,
 ): PrimitiveState {
   switch (family) {
-    case 'radialCluster': return radialCluster(ctx);
-    case 'interruptedHalo': return interruptedHalo(ctx);
+    case 'scaffoldArm': return scaffoldArm(ctx);
+    case 'shellFragment': return shellFragment(ctx);
     case 'spineRibs': return spineRibs(ctx);
     case 'splitCrescent': return splitCrescent(ctx);
     case 'branchStruts': return branchStruts(ctx);
-    case 'orbitalNodes': return orbitalNodes(ctx);
+    case 'pressureResidue': return pressureResidue(ctx);
     case 'partialEnclosure': return partialEnclosure(ctx);
     case 'kinkedSpine': return kinkedSpine(ctx);
-    case 'eccentricOrbit': return eccentricOrbit(ctx);
+    case 'climateFront': return climateFront(ctx);
     case 'unfoldingFan': return unfoldingFan(ctx);
     case 'scatterFragment': return scatterFragment(ctx);
     case 'driftingTendril': return driftingTendril(ctx);
@@ -53,7 +55,7 @@ export function createMotifState(
 
 // ── Family: Radial Cluster ──
 // Spoke Scaffold: asymmetric radiating arms with split-node center. No circles.
-function radialCluster(ctx: MotifGenerationContext): PrimitiveState {
+function scaffoldArm(ctx: MotifGenerationContext): PrimitiveState {
   const { rng, region } = ctx;
   const state = zeroPrimitiveState();
   const spokeCount = rng.int(3, 6);
@@ -125,7 +127,7 @@ function radialCluster(ctx: MotifGenerationContext): PrimitiveState {
 
 // ── Family: Interrupted Halo ──
 // Fractured Shell: disconnected arc fragments with gap marks. No circles, no ring.
-function interruptedHalo(ctx: MotifGenerationContext): PrimitiveState {
+function shellFragment(ctx: MotifGenerationContext): PrimitiveState {
   const { rng, region } = ctx;
   const state = zeroPrimitiveState();
   const r = rng.float(18, 32);
@@ -404,7 +406,7 @@ function branchStruts(ctx: MotifGenerationContext): PrimitiveState {
 
 // ── Family: Orbital Nodes ──
 // Pressure Node Field: split-node marks at non-orbital positions with broken arcs. No circles.
-function orbitalNodes(ctx: MotifGenerationContext): PrimitiveState {
+function pressureResidue(ctx: MotifGenerationContext): PrimitiveState {
   const { rng, region } = ctx;
   const state = zeroPrimitiveState();
   const nodeCount = rng.int(3, 5);
@@ -654,7 +656,7 @@ function kinkedSpine(ctx: MotifGenerationContext): PrimitiveState {
 
 // ── Family: Eccentric Orbit ──
 // Decentered Manifold: offset arc segments around decentered foci. No circles, no ring.
-function eccentricOrbit(ctx: MotifGenerationContext): PrimitiveState {
+function climateFront(ctx: MotifGenerationContext): PrimitiveState {
   const { rng } = ctx;
   const state = zeroPrimitiveState();
 

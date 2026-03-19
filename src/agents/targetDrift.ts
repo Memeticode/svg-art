@@ -8,6 +8,7 @@ import type { CompositionPreset } from '@/art/compositionPresets';
 import type { ArtDirectionConfig } from '@/art/artDirectionConfig';
 import type { Rng } from '@/shared/rng';
 import type { PrimitiveState } from '@/geometry/primitiveTypes';
+import { PATH_SLOT_COUNT } from '@/geometry/primitiveTypes';
 import type { MotifMemory } from './motifMemory';
 import { clamp } from '@/shared/math';
 import { clonePrimitiveState } from '@/geometry/primitiveState';
@@ -39,7 +40,7 @@ export function applyTargetDrift(target: PrimitiveState, ctx: DriftContext): voi
   const magDrift = Math.max(flow.magnitude, 0.1) * 0.15 * dt;
 
   // Drift path control points along flow direction
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < PATH_SLOT_COUNT; i++) {
     const p = target.paths[i];
     if (!p.active) continue;
     const inertia = memory.slotInertia[i];
@@ -63,7 +64,7 @@ export function applyTargetDrift(target: PrimitiveState, ctx: DriftContext): voi
   const roundnessFatigue = (memory as any).roundnessFatigue ?? 0;
   if (roundnessFatigue > 0.5) {
     const antiClosureDrift = (roundnessFatigue - 0.5) * 0.2 * dt;
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < PATH_SLOT_COUNT; i++) {
       const p = target.paths[i];
       if (!p.active) continue;
       // Check if path contains arc commands
@@ -156,6 +157,7 @@ export function applySoftReseed(
       flow: sample.flow,
       depthBand: agent.depthBand,
       energy: agent.energy,
+      memory: agent.memory,
     });
   }
   // Apply no-circle doctrine to all targets including ghost/macro
@@ -179,13 +181,9 @@ export function applySoftReseed(
     rng.fork(agent.id + '-stagger-' + Math.floor(timeSec)),
   );
   // Blend old and new stagger profiles for continuity
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < PATH_SLOT_COUNT; i++) {
     oldProfile.pathOffsets[i] = oldProfile.pathOffsets[i] * 0.7 + newProfile.pathOffsets[i] * 0.3;
   }
-  for (let i = 0; i < 7; i++) {
-    oldProfile.circleOffsets[i] = oldProfile.circleOffsets[i] * 0.7 + newProfile.circleOffsets[i] * 0.3;
-  }
-  oldProfile.ringOffset = oldProfile.ringOffset * 0.7 + newProfile.ringOffset * 0.3;
 
   // Brief opacity dip to soften the visual transition
   agent.opacity *= 0.90;

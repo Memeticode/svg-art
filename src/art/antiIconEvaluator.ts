@@ -3,6 +3,7 @@
 // Circles are doctrinally inactive — scoring is purely arc/closure based.
 
 import type { PrimitiveState } from '@/geometry/primitiveTypes';
+import { PATH_SLOT_COUNT } from '@/geometry/primitiveTypes';
 import type { MotifMemory } from '@/agents/motifMemory';
 import type { ArtDirectionConfig } from './artDirectionConfig';
 import { clamp } from '@/shared/math';
@@ -100,7 +101,7 @@ export function evaluateIconScore(
   let pointCount = 0;
   const qCounts = [0, 0, 0, 0];
 
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < PATH_SLOT_COUNT; i++) {
     const p = state.paths[i];
     if (!p.active) continue;
     activePathCount++;
@@ -166,15 +167,15 @@ export function computeDestabilization(
   // Arc break intensity: controls arc fragmentation
   const arcBreakIntensity = impulseStrength * config.closureBreakStrength;
 
-  // Path noise: increases with impulse
-  const pathNoiseIntensity = impulseStrength * 2.0;
+  // Path noise: increases with impulse (stronger for faster decay)
+  const pathNoiseIntensity = impulseStrength * 3.0;
 
   // Force direction: perpendicular to dominant force (shearing, not pushing)
   const forceAngle = memory.dominantForceAngle + Math.PI / 2;
   const forceStrength = impulseStrength * config.asymmetryBias;
 
-  // Opacity pressure: only at high impulse levels
-  const opacityPressure = impulseStrength > 0.7 ? -(impulseStrength - 0.7) * 0.3 : 0;
+  // Opacity pressure: triggers at lower threshold for stronger decay
+  const opacityPressure = impulseStrength > 0.5 ? -(impulseStrength - 0.5) * 0.3 : 0;
 
   return {
     arcBreakIntensity,
@@ -189,10 +190,6 @@ export function applyImpulse(
   state: PrimitiveState,
   impulse: DestabilizationImpulse,
 ): PrimitiveState {
-  // Circles and ring are doctrinally inactive — no manipulation needed
-  const circles = state.circles;
-  const ring = state.ring;
-
   // Shift path control points along force direction + break high-closure arcs
   const cosF = Math.cos(impulse.forceAngle) * impulse.forceStrength;
   const sinF = Math.sin(impulse.forceAngle) * impulse.forceStrength;
@@ -207,5 +204,5 @@ export function applyImpulse(
     return { ...p, d, opacity: clamp(p.opacity + impulse.opacityPressure, 0, 1) };
   }) as PrimitiveState['paths'];
 
-  return { paths, circles, ring };
+  return { paths };
 }

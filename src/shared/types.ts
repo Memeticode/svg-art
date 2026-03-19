@@ -10,15 +10,15 @@ export type DepthBandId = 'ghost' | 'back' | 'mid' | 'front';
 
 /** Motif family identifiers */
 export type MotifFamilyId =
-  | 'radialCluster'
-  | 'interruptedHalo'
+  | 'scaffoldArm'
+  | 'shellFragment'
   | 'spineRibs'
   | 'splitCrescent'
   | 'branchStruts'
-  | 'orbitalNodes'
+  | 'pressureResidue'
   | 'partialEnclosure'
   | 'kinkedSpine'
-  | 'eccentricOrbit'
+  | 'climateFront'
   | 'unfoldingFan'
   | 'scatterFragment'
   | 'driftingTendril'

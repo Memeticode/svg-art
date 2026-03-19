@@ -1,8 +1,8 @@
 // ── Post-generation art direction filters ──
 // Enforce no-circle doctrine via path-based arc sweep caps.
-// Circles are doctrinally inactive — no circle manipulation needed.
 
 import type { PrimitiveState } from '@/geometry/primitiveTypes';
+import { PATH_SLOT_COUNT } from '@/geometry/primitiveTypes';
 import type { ArtDirectionConfig } from './artDirectionConfig';
 import { clonePrimitiveState } from '@/geometry/primitiveState';
 
@@ -10,7 +10,7 @@ import { clonePrimitiveState } from '@/geometry/primitiveState';
 const ARC_LARGE_RE = /([Aa])\s*(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)[,\s]+1[,\s]+([01])[,\s]+(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)/g;
 
 /** Apply art direction enforcement to a generated PrimitiveState.
- *  Pure function — enforces no-circle doctrine on paths. */
+ *  Pure function — enforces arc closure caps on paths. */
 export function applyArtDirectionPenalty(
   state: PrimitiveState,
   config: ArtDirectionConfig,
@@ -19,7 +19,7 @@ export function applyArtDirectionPenalty(
 
   // ── Arc sweep cap: break large arcs that approach full closure ──
   if (config.closureBreakStrength > 0) {
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < PATH_SLOT_COUNT; i++) {
       const p = result.paths[i];
       if (!p.active) continue;
 
@@ -48,7 +48,7 @@ export function applyArtDirectionPenalty(
 
   // ── Self-closure break: if path start ≈ end, shorten final segment ──
   if (config.closureBreakStrength > 0.5) {
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < PATH_SLOT_COUNT; i++) {
       const p = result.paths[i];
       if (!p.active) continue;
       // Check for Z/z close-path command
@@ -58,12 +58,6 @@ export function applyArtDirectionPenalty(
       }
     }
   }
-
-  // ── No-circle doctrine: forcibly deactivate all circles and rings ──
-  for (let i = 0; i < 7; i++) {
-    result.circles[i] = { ...result.circles[i], active: false };
-  }
-  result.ring = { ...result.ring, active: false };
 
   return result;
 }
