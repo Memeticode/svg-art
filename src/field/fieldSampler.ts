@@ -9,6 +9,8 @@ import { clamp } from '@/shared/math';
 export interface FieldSample {
   flow: FlowSample;
   region: RegionSignature;
+  /** 0..1 — proximity to a regional dialect boundary */
+  boundaryProximity: number;
 }
 
 export interface FieldSampler {
@@ -25,9 +27,11 @@ export function createFieldSampler(
       const flow = flowField.sample(xNorm, yNorm, timeSec);
       const baseRegion = regionMap.sample(xNorm, yNorm);
 
+      const boundaryProximity = regionMap.sampleBoundaryProximity(xNorm, yNorm);
+
       // Without climate, return unmodulated region
       if (!climate) {
-        return { flow, region: baseRegion };
+        return { flow, region: baseRegion, boundaryProximity };
       }
 
       // Apply seasonal modulation to region properties
@@ -43,7 +47,7 @@ export function createFieldSampler(
         linearity: clamp(baseRegion.linearity * seasonal.linearityMod, 0, 1),
       };
 
-      return { flow, region };
+      return { flow, region, boundaryProximity };
     },
   };
 }

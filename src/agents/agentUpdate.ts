@@ -128,6 +128,40 @@ export function updateAgent(
         agent.phase = lerp(agent.phase, avgPhase, coherenceStrength);
       }
     }
+
+    // ── Light contagion: shared pressure, not imitation ──
+    if (neighborCount > 0) {
+      // Deformation direction propagation: blend nearby dominant force angles
+      let forceAngleSin = 0;
+      let forceAngleCos = 0;
+      let pressureSum = 0;
+      let scarSum = 0;
+      for (const n of neighbors) {
+        if (n.id === agent.id) continue;
+        forceAngleSin += Math.sin(n.memory.dominantForceAngle);
+        forceAngleCos += Math.cos(n.memory.dominantForceAngle);
+        pressureSum += n.memory.frontPressure;
+        scarSum += n.memory.climateScarIntensity;
+      }
+      // Subtle deformation direction inheritance (weight 0.06, coherence-modulated)
+      const avgForceAngle = Math.atan2(forceAngleSin / neighborCount, forceAngleCos / neighborCount);
+      const contagionWeight = sample.region.coherence * 0.06;
+      agent.memory.dominantForceAngle = angleLerp(
+        agent.memory.dominantForceAngle, avgForceAngle, contagionWeight,
+      );
+
+      // Shared pressure inheritance: near high-pressure neighbors, accumulate faster
+      const avgPressure = pressureSum / neighborCount;
+      if (avgPressure > agent.memory.frontPressure) {
+        agent.memory.frontPressure += (avgPressure - agent.memory.frontPressure) * 0.003 * dt;
+      }
+
+      // Memory proximity: tight clusters slowly share climate scar intensity
+      const avgScar = scarSum / neighborCount;
+      agent.memory.climateScarIntensity = lerp(
+        agent.memory.climateScarIntensity, avgScar, 0.001,
+      );
+    }
   }
 
   agent.rotationDeg = lerp(
@@ -222,6 +256,8 @@ export function updateAgent(
   deformIntensity *= 1 + agent.memory.curlExposure * 0.4;
   // Front pressure increases deformation intensity near convergence fronts
   deformIntensity *= 1 + agent.memory.frontPressure * 0.3;
+  // Boundary proximity: dialect edges are more active and unstable
+  deformIntensity *= 1 + agent.memory.boundaryProximity * 0.4;
 
   const fieldBias = {
     angle: sample.flow.angle,

@@ -18,6 +18,9 @@ export interface MotifMemory {
   roundnessFatigue: number;         // 0..1, grows when paths show closure, decays slowly
   centerRejectionBias: number;      // 0..1, grows when path endpoints cluster near origin
 
+  // ── Boundary awareness ──
+  boundaryProximity: number;        // 0..1, instant readout from region map
+
   // ── Climate causality channels ──
   laneExposure: number;             // 0..1, grows in high linearity + high magnitude
   basinDepth: number;               // 0..1, grows in convergence zones
@@ -117,6 +120,8 @@ export function createMotifMemory(): MotifMemory {
     slotInertia,
     roundnessFatigue: 0,
     centerRejectionBias: 0,
+    // Boundary awareness
+    boundaryProximity: 0,
     // Climate causality channels
     laneExposure: 0,
     basinDepth: 0,
@@ -183,6 +188,9 @@ export function accumulateMemory(
     memory.slotInertia[i] = lerp(memory.slotInertia[i], target, 0.003);
     memory.slotInertia[i] = clamp(memory.slotInertia[i], 0.5, 2.0);
   }
+
+  // ── Boundary proximity (instant readout, no accumulation) ──
+  memory.boundaryProximity = sample.boundaryProximity;
 
   // ── Climate causality channels ──
   // Asymmetric rates: accumulate ~2x, decay ~0.5x

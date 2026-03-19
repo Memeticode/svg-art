@@ -12,6 +12,7 @@ import { updateAgent } from './agentUpdate';
 import { spawnInitialAgents } from './agentSpawner';
 import { resolveColors } from '@/art/colorResolvers';
 import { createSpatialGrid } from './spatialGrid';
+import type { ResidueSystem } from '@/render/ResidueSystem';
 
 // Per-band parallax drift: slow time-based offset that differs per layer, creating depth
 const PARALLAX_DRIFT: Record<string, { speed: number; amplitude: number; phaseX: number; phaseY: number }> = {
@@ -26,6 +27,8 @@ export interface AgentSystem {
   update(dt: number, timeSec: number): void;
   getSnapshots(viewport: Viewport, timeSec?: number): AgentRenderSnapshot[];
   reset(viewport: Viewport): void;
+  /** Attach a residue system to emit traces on family-changing reseeds */
+  setResidueSystem(system: ResidueSystem): void;
 }
 
 export function createAgentSystem(
@@ -48,16 +51,46 @@ export function createAgentSystem(
 
   const grid = createSpatialGrid();
   const NEIGHBOR_RADIUS = 0.12;
+  let residueSystem: ResidueSystem | null = null;
 
   function update(dt: number, timeSec: number): void {
     grid.rebuild(agents);
     for (const agent of agents) {
+      const prevFamily = agent.family;
       const neighbors = grid.getNeighbors(agent.xNorm, agent.yNorm, NEIGHBOR_RADIUS);
       updateAgent(agent, dt, timeSec, sampler, preset, rng, neighbors, artDirection);
+
+      // Emit residue on family-changing reseeds
+      if (residueSystem && agent.family !== prevFamily) {
+        const bandConfig = preset.depthBands[agent.depthBand];
+        const colors = resolveColors(palette, agent.paletteOffset, bandConfig, agent.energy, agent.memory.climateScarIntensity);
+        const vp = lastViewport;
+        if (vp) {
+          const activePaths: { d: string; strokeWidth: number }[] = [];
+          for (const p of agent.currentState.paths) {
+            if (p.active) activePaths.push({ d: p.d, strokeWidth: p.strokeWidth });
+          }
+          if (activePaths.length > 0) {
+            residueSystem.emit({
+              paths: activePaths,
+              xPx: agent.xNorm * vp.width,
+              yPx: agent.yNorm * vp.height,
+              scale: agent.scale,
+              rotationDeg: agent.rotationDeg,
+              opacity: 0.10,
+              maxLifeSec: 8 + Math.random() * 7,
+              stroke: colors.stroke,
+            });
+          }
+        }
+      }
     }
   }
 
+  let lastViewport: Viewport | null = null;
+
   function getSnapshots(vp: Viewport, timeSec = 0): AgentRenderSnapshot[] {
+    lastViewport = vp;
     const snapshots: AgentRenderSnapshot[] = [];
 
     for (const agent of agents) {
@@ -69,12 +102,23 @@ export function createAgentSystem(
         agent.paletteOffset,
         bandConfig,
         agent.energy,
+        agent.memory.climateScarIntensity,
       );
 
       // Time-based parallax drift — each band drifts at different speed/phase
       const pd = PARALLAX_DRIFT[agent.depthBand] ?? PARALLAX_DRIFT.mid;
       const driftX = Math.sin(timeSec * pd.speed + pd.phaseX) * pd.amplitude;
       const driftY = Math.cos(timeSec * pd.speed * 0.7 + pd.phaseY) * pd.amplitude;
+
+      // Compute gradient bucket from dominant force angle (16 buckets over TAU)
+      // Only apply gradient to agents with meaningful climate exposure
+      const climateExposure = agent.memory.climateScarIntensity;
+      let gradientBucket = -1; // -1 = flat stroke (no gradient)
+      if (climateExposure > 0.08) {
+        const angle = agent.memory.dominantForceAngle;
+        const normalized = ((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+        gradientBucket = Math.floor((normalized / (Math.PI * 2)) * 16) % 16;
+      }
 
       snapshots.push({
         id: agent.id,
@@ -88,6 +132,7 @@ export function createAgentSystem(
         resolvedStroke: colors.stroke,
         resolvedFill: colors.fill,
         resolvedGlow: colors.glow,
+        gradientBucket,
       });
     }
     return snapshots;
@@ -104,5 +149,9 @@ export function createAgentSystem(
     );
   }
 
-  return { agents, update, getSnapshots, reset };
+  function setResidueSystem(system: ResidueSystem): void {
+    residueSystem = system;
+  }
+
+  return { agents, update, getSnapshots, reset, setResidueSystem };
 }

@@ -188,6 +188,23 @@ export function applySoftReseed(
   // Brief opacity dip to soften the visual transition
   agent.opacity *= 0.90;
 
+  // ── Destabilization cascade: nearby agents age slightly toward their own reseed ──
+  // This creates subtle ripple effects — one reorganization nudges nearby forms
+  if (neighbors) {
+    const CASCADE_RADIUS = 0.06; // half of NEIGHBOR_RADIUS
+    for (const n of neighbors) {
+      if (n.id === agent.id) continue;
+      const dx = n.xNorm - agent.xNorm;
+      const dy = n.yNorm - agent.yNorm;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < CASCADE_RADIUS && dist > 0) {
+        // Age nearby agents by 1.0 seconds, damped by distance
+        const falloff = 1 - dist / CASCADE_RADIUS;
+        n.memory.persistenceAge += 1.0 * falloff;
+      }
+    }
+  }
+
   resetPersistenceAge(agent.memory);
   return true;
 }

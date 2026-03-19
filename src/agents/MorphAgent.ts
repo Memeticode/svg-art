@@ -71,4 +71,6 @@ export interface AgentRenderSnapshot {
   resolvedStroke: string;
   resolvedFill: string;
   resolvedGlow: string;
+  /** Gradient bucket index (0-15) for directional climate evidence, or -1 for flat stroke */
+  gradientBucket: number;
 }

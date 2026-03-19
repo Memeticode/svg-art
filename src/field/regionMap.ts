@@ -22,6 +22,9 @@ export interface RegionSignature {
 
 export interface RegionMap {
   sample(xNorm: number, yNorm: number): RegionSignature;
+  /** Returns 0..1 indicating proximity to a regional dialect boundary.
+   *  High values = near a sharp transition in regional character. */
+  sampleBoundaryProximity(xNorm: number, yNorm: number): number;
 }
 
 export function createRegionMap(rng: Rng): RegionMap {
@@ -63,5 +66,23 @@ export function createRegionMap(rng: Rng): RegionMap {
     };
   }
 
-  return { sample };
+  /** Measure boundary proximity via gradient magnitude of key regional properties.
+   *  High gradient = sharp transition = dialect boundary. */
+  function sampleBoundaryProximity(xNorm: number, yNorm: number): number {
+    const eps = 0.03;
+    const here = sample(xNorm, yNorm);
+    const right = sample(xNorm + eps, yNorm);
+    const down = sample(xNorm, yNorm + eps);
+
+    // Gradient magnitude across coherence, linearity, fragmentation
+    let gradSum = 0;
+    gradSum += Math.abs(right.coherence - here.coherence) + Math.abs(down.coherence - here.coherence);
+    gradSum += Math.abs(right.linearity - here.linearity) + Math.abs(down.linearity - here.linearity);
+    gradSum += Math.abs(right.fragmentation - here.fragmentation) + Math.abs(down.fragmentation - here.fragmentation);
+
+    // Normalize: typical gradient is small; scale to 0..1
+    return clamp(gradSum * 3.0, 0, 1);
+  }
+
+  return { sample, sampleBoundaryProximity };
 }

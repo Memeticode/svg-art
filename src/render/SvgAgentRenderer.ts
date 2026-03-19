@@ -43,7 +43,7 @@ export function createSvgAgentRenderer(
       node.group.setAttribute('opacity', snap.opacity.toFixed(3));
 
       applyGlowFilter(node, snap.depthBand, snap.opacity);
-      applyPrimitiveState(node, snap.primitiveState, snap.resolvedStroke, snap.resolvedFill);
+      applyPrimitiveState(node, snap.primitiveState, snap.resolvedStroke, snap.resolvedFill, snap.gradientBucket);
     }
 
     for (const prevId of activeIds) {
@@ -62,10 +62,18 @@ export function createSvgAgentRenderer(
     state: PrimitiveState,
     stroke: string,
     _fill: string,
+    gradientBucket: number,
   ): void {
     // Paths — rendered as layered strokes for taper effect
     // Each path is drawn 3 times: thick/bright, medium, thin/faint
     // The overlapping layers with round linecaps create a natural tapered feel
+    //
+    // Climate gradient evidence: when gradientBucket >= 0, paths in the first half
+    // of slots (structural) get slightly higher opacity (pressure-facing), while
+    // later slots (trailing/detail) get reduced opacity. This creates a subtle
+    // directional fade that reveals which side of the motif faces the climate force.
+    const hasGradient = gradientBucket >= 0;
+
     for (let i = 0; i < PATH_SLOT_COUNT; i++) {
       const p = state.paths[i];
       const baseElIdx = i * TAPER_SEGMENTS;
@@ -77,6 +85,12 @@ export function createSvgAgentRenderer(
         continue;
       }
 
+      // Climate gradient: early slots = pressure-facing (brighter),
+      // later slots = trailing (dimmer). Subtle directional opacity variation.
+      const slotGradientMod = hasGradient
+        ? 1.0 + (0.5 - i / PATH_SLOT_COUNT) * 0.25  // range: ~1.12 to ~0.88
+        : 1.0;
+
       const baseWidth = Math.max(1.0, p.strokeWidth * 1.8);
       for (let s = 0; s < TAPER_SEGMENTS; s++) {
         const el = node.paths[baseElIdx + s];
@@ -84,7 +98,7 @@ export function createSvgAgentRenderer(
         el.setAttribute('d', p.d);
         el.setAttribute('stroke', stroke);
         el.setAttribute('stroke-width', (baseWidth * TAPER_WIDTH[s]).toFixed(2));
-        el.setAttribute('opacity', (p.opacity * TAPER_OPACITY[s]).toFixed(3));
+        el.setAttribute('opacity', (p.opacity * TAPER_OPACITY[s] * slotGradientMod).toFixed(3));
       }
     }
   }

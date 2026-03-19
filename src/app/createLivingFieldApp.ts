@@ -13,6 +13,7 @@ import { createSvgPool } from '@/render/SvgPool';
 import { createSvgAgentRenderer } from '@/render/SvgAgentRenderer';
 import { createSvgBackgroundRenderer } from '@/render/SvgBackgroundRenderer';
 import { createDebugOverlays } from '@/render/DebugOverlays';
+import { createResidueSystem } from '@/render/ResidueSystem';
 import { createAnimationLoop } from './animationLoop';
 import { createResizeHandler } from './resizeObserver';
 import { getPreset, type CompositionPreset } from '@/art/compositionPresets';
@@ -75,6 +76,10 @@ export function createLivingFieldApp(
     initialViewport,
   );
 
+  // ── Residue system ──
+  const residueSystem = createResidueSystem(scene.layers.residue);
+  agentSystem.setResidueSystem(residueSystem);
+
   // ── Animation loop ──
   const loop = createAnimationLoop((dt, timeSec) => {
     const viewport = resizeHandler.getViewport();
@@ -84,6 +89,10 @@ export function createLivingFieldApp(
 
     // Update simulation
     agentSystem.update(dt, timeSec);
+
+    // Residue: decay and render fading traces
+    residueSystem.update(dt);
+    residueSystem.render();
 
     // Background wash
     bgRenderer.update(timeSec);
