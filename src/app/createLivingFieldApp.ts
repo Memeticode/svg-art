@@ -1,7 +1,6 @@
 // ── LivingFieldApp: main orchestrator ──
 
 import type { CreateLivingFieldOptions, LivingFieldAppHandle } from './runtimeConfig';
-import type { Viewport } from '@/shared/types';
 import { createRng } from '@/shared/rng';
 import { createFlowField } from '@/field/flowField';
 import { createRegionMap } from '@/field/regionMap';
@@ -15,7 +14,6 @@ import { createSvgBackgroundRenderer } from '@/render/SvgBackgroundRenderer';
 import { createDebugOverlays } from '@/render/DebugOverlays';
 import { createResidueSystem } from '@/render/ResidueSystem';
 import { createAnimationLoop } from './animationLoop';
-import { createResizeHandler } from './resizeObserver';
 import { getPreset, type CompositionPreset } from '@/art/compositionPresets';
 import { getPalette, type PalettePreset } from '@/art/palettePresets';
 
@@ -44,21 +42,15 @@ export function createLivingFieldApp(
   const sampler = createFieldSampler(flowField, regionMap, climate);
 
   // ── Scene and rendering ──
+  // Fixed internal canvas (1920×1080) — CSS scales to actual viewport
   const scene = createSvgScene(container);
   const pool = createSvgPool();
   const agentRenderer = createSvgAgentRenderer(scene, pool);
-
-  // Measure initial viewport
-  const resizeHandler = createResizeHandler(container, handleResize);
-  resizeHandler.start();
-  const initialViewport = resizeHandler.getViewport();
-  scene.resize(initialViewport);
 
   const bgRenderer = createSvgBackgroundRenderer(
     scene.bgGroup,
     scene.defs,
     currentPalette,
-    initialViewport,
   );
 
   // ── Debug overlays ──
@@ -73,7 +65,6 @@ export function createLivingFieldApp(
     currentPreset,
     currentPalette,
     sampler,
-    initialViewport,
   );
 
   // ── Residue system ──
@@ -82,8 +73,6 @@ export function createLivingFieldApp(
 
   // ── Animation loop ──
   const loop = createAnimationLoop((dt, timeSec) => {
-    const viewport = resizeHandler.getViewport();
-
     // Advance climate state (attractors, fronts, seasonal phase)
     climate.update(dt);
 
@@ -98,17 +87,12 @@ export function createLivingFieldApp(
     bgRenderer.update(timeSec);
 
     // Render
-    const snapshots = agentSystem.getSnapshots(viewport, timeSec);
+    const snapshots = agentSystem.getSnapshots(timeSec);
     agentRenderer.render(snapshots);
 
     // Debug overlays (no-op when no modes active)
-    debugOverlays.update(agentSystem.agents, sampler, viewport, timeSec, climate);
+    debugOverlays.update(agentSystem.agents, sampler, timeSec, climate);
   }, pauseWhenHidden);
-
-  function handleResize(viewport: Viewport): void {
-    scene.resize(viewport);
-    bgRenderer.resize(viewport);
-  }
 
   // Auto-start
   loop.start();
@@ -125,7 +109,6 @@ export function createLivingFieldApp(
 
     destroy(): void {
       loop.stop();
-      resizeHandler.stop();
       debugOverlays.destroy();
       agentRenderer.destroy();
       bgRenderer.destroy();
@@ -133,15 +116,13 @@ export function createLivingFieldApp(
     },
 
     resize(): void {
-      const viewport = resizeHandler.getViewport();
-      handleResize(viewport);
+      // No-op — fixed internal canvas, CSS handles scaling
     },
 
     setPreset(name: string): void {
       currentPreset = getPreset(name);
       currentPalette = getPalette(currentPreset.paletteId);
-      const viewport = resizeHandler.getViewport();
-      agentSystem.reset(viewport);
+      agentSystem.reset();
     },
   };
 }

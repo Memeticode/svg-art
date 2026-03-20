@@ -29,6 +29,25 @@ export function updateAgent(
   const bandConfig = preset.depthBands[agent.depthBand];
   const isGhost = agent.depthBand === 'ghost';
 
+  // Skip expensive operations for far off-screen agents
+  const farOffScreen = agent.xNorm < -0.3 || agent.xNorm > 1.3 ||
+                       agent.yNorm < -0.3 || agent.yNorm > 1.3;
+  if (farOffScreen) {
+    // Just advance position and morph progress — no deformation, no evaluation
+    agent.xNorm += agent.vx * dt;
+    agent.yNorm += agent.vy * dt;
+    agent.morphProgress += dt / agent.morphDurationSec;
+    agent.ageSec += dt;
+    // Soft wrap
+    const wrapMargins: Record<string, number> = { ghost: 0.25, back: 0.15, mid: 0.10, front: 0.08 };
+    const wm = wrapMargins[agent.depthBand] ?? 0.10;
+    if (agent.xNorm < -wm) agent.xNorm = 1 + wm;
+    else if (agent.xNorm > 1 + wm) agent.xNorm = -wm;
+    if (agent.yNorm < -wm) agent.yNorm = 1 + wm;
+    else if (agent.yNorm > 1 + wm) agent.yNorm = -wm;
+    return;
+  }
+
   // Per-layer flow: each band samples flow at different time scale and spatial offset
   const flowTimeScales: Record<string, number> = { ghost: 0.4, back: 0.7, mid: 1.0, front: 1.3 };
   const flowOffsets: Record<string, [number, number]> = {
@@ -198,8 +217,13 @@ export function updateAgent(
     agent.opacity *= 1 - quietFactor * artDirection.quietBasinStrength * 0.5;
   }
 
-  // ── Accumulate structural memory ──
-  accumulateMemory(agent.memory, sample, dt, agent.currentState);
+  // ── Accumulate structural memory (deferred: every ~5 frames) ──
+  // Memory measurement uses coords but is still moderately expensive;
+  // running every 5 frames at 60fps = 12 updates/sec — more than sufficient
+  const memoryFrame = Math.floor(agent.ageSec * 12) % 5;
+  if (memoryFrame === 0) {
+    accumulateMemory(agent.memory, sample, dt * 5, agent.currentState);
+  }
 
   // ── Morph progression (soft reseed at ~85%) ──
   agent.morphProgress += dt / agent.morphDurationSec;
@@ -231,8 +255,9 @@ export function updateAgent(
     agent.staggerProfile,
   );
 
-  // ── Anti-icon evaluation and destabilization ──
-  if (artDirection) {
+  // ── Anti-icon evaluation and destabilization (deferred: every ~3 frames) ──
+  const iconFrame = Math.floor(agent.ageSec * 20) % 3;
+  if (artDirection && iconFrame === 0) {
     const iconScore = evaluateIconScore(interpolated, agent.memory);
     const impulse = computeDestabilization(iconScore, agent.memory, artDirection);
     if (impulse) {

@@ -1,13 +1,12 @@
 // ── Background wash: subtle gradient that slowly evolves ──
 
 import type { PalettePreset } from '@/art/palettePresets';
-import type { Viewport } from '@/shared/types';
+import { CANVAS } from '@/shared/types';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 export interface SvgBackgroundRenderer {
   update(timeSec: number): void;
-  resize(viewport: Viewport): void;
   destroy(): void;
 }
 
@@ -15,7 +14,6 @@ export function createSvgBackgroundRenderer(
   bgGroup: SVGGElement,
   defs: SVGDefsElement,
   palette: PalettePreset,
-  viewport: Viewport,
 ): SvgBackgroundRenderer {
   // Create radial gradient
   const gradId = 'living-field-bg-grad';
@@ -34,11 +32,11 @@ export function createSvgBackgroundRenderer(
   }
   defs.appendChild(grad);
 
-  // Background rect
+  // Background rect — fixed to internal canvas dimensions
   const rect = document.createElementNS(SVG_NS, 'rect');
   rect.setAttribute('fill', `url(#${gradId})`);
-  rect.setAttribute('width', String(viewport.width));
-  rect.setAttribute('height', String(viewport.height));
+  rect.setAttribute('width', String(CANVAS.width));
+  rect.setAttribute('height', String(CANVAS.height));
   bgGroup.appendChild(rect);
 
   function update(timeSec: number): void {
@@ -49,15 +47,10 @@ export function createSvgBackgroundRenderer(
     grad.setAttribute('cy', `${cy.toFixed(1)}%`);
   }
 
-  function resize(vp: Viewport): void {
-    rect.setAttribute('width', String(vp.width));
-    rect.setAttribute('height', String(vp.height));
-  }
-
   function destroy(): void {
     rect.remove();
     grad.remove();
   }
 
-  return { update, resize, destroy };
+  return { update, destroy };
 }

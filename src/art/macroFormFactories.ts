@@ -8,7 +8,7 @@ import type { DepthBandId } from '@/shared/types';
 import type { FlowSample } from '@/field/flowField';
 import type { RegionSignature } from '@/field/regionMap';
 import type { PrimitiveState } from '@/geometry/primitiveTypes';
-import { zeroPrimitiveState } from '@/geometry/primitiveState';
+import { zeroPrimitiveState, ensureAllParsed } from '@/geometry/primitiveState';
 import {
   cubicPath, spiralSegmentPath, brokenArcPath, linePath, jaggedPath,
 } from '@/geometry/pathHelpers';
@@ -64,17 +64,19 @@ export function pickMacroFormType(rng: Rng, flow: FlowSample, region: RegionSign
 }
 
 export function createMacroFormState(type: MacroFormType, ctx: MacroFormContext): PrimitiveState {
+  let state: PrimitiveState;
   switch (type) {
-    case 'warpedContourVeil': return applyTraversalExtension(warpedContourVeil(ctx), 0.4);
-    case 'pressureBand': return applyTraversalExtension(pressureBand(ctx), 0.3);
-    case 'bentManifold': return applyTraversalExtension(bentManifold(ctx), 0.3);
-    case 'partialShellField': return applyTraversalExtension(partialShellField(ctx), 0.3);
-    case 'driftCorridor': return applyTraversalExtension(driftCorridor(ctx), 0.4);
-    case 'pressureVeil': return applyTraversalExtension(pressureVeil(ctx), 0.3);
-    case 'contourScar': return applyTraversalExtension(contourScar(ctx), 0.2);
-    case 'basinRim': return applyTraversalExtension(basinRim(ctx), 0.3);
-    case 'fieldResidue': return applyTraversalExtension(fieldResidue(ctx), 0.2);
+    case 'warpedContourVeil': state = applyTraversalExtension(warpedContourVeil(ctx), 0.4, ctx.flow.angle); break;
+    case 'pressureBand': state = applyTraversalExtension(pressureBand(ctx), 0.3, ctx.flow.angle); break;
+    case 'bentManifold': state = applyTraversalExtension(bentManifold(ctx), 0.3, ctx.flow.angle); break;
+    case 'partialShellField': state = applyTraversalExtension(partialShellField(ctx), 0.3, ctx.flow.angle); break;
+    case 'driftCorridor': state = applyTraversalExtension(driftCorridor(ctx), 0.4, ctx.flow.angle); break;
+    case 'pressureVeil': state = applyTraversalExtension(pressureVeil(ctx), 0.3, ctx.flow.angle); break;
+    case 'contourScar': state = applyTraversalExtension(contourScar(ctx), 0.2, ctx.flow.angle); break;
+    case 'basinRim': state = applyTraversalExtension(basinRim(ctx), 0.3, ctx.flow.angle); break;
+    case 'fieldResidue': state = applyTraversalExtension(fieldResidue(ctx), 0.2, ctx.flow.angle); break;
   }
+  return ensureAllParsed(state);
 }
 
 // ── Warped Contour Veil ──

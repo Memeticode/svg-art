@@ -42,3 +42,7 @@ export interface Viewport {
   width: number;
   height: number;
 }
+
+/** Fixed internal canvas dimensions — all drawing uses this coordinate system.
+ *  The SVG viewBox is set to these values; CSS scales to actual screen size. */
+export const CANVAS = { width: 1920, height: 1080 } as const;

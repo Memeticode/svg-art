@@ -9,7 +9,7 @@ import type { RegionSignature } from '@/field/regionMap';
 import type { PrimitiveState } from '@/geometry/primitiveTypes';
 import type { MotifMemory } from '@/agents/motifMemory';
 import { applyTraversalExtension } from '@/geometry/traversalExtension';
-import { zeroPrimitiveState } from '@/geometry/primitiveState';
+import { zeroPrimitiveState, ensureAllParsed } from '@/geometry/primitiveState';
 import {
   arcPath, spokePath, ribPath, crescentPath, linePath, quadPath, cubicPath,
   kinkedLinePath, jaggedPath, spiralSegmentPath, asymmetricRibPath,
@@ -60,13 +60,14 @@ export function createMotifState(
   }
 
   // Apply traversal extension: push stroke endpoints beyond viewport.
-  // Extension scale varies by depth band — mid/front need more extension
-  // to exceed the viewport at their smaller render scale.
-  // Ghost agents are already massive and need less.
   const extensionScales: Record<string, number> = {
     ghost: 0.3, back: 0.6, mid: 0.9, front: 1.0,
   };
-  state = applyTraversalExtension(state, extensionScales[ctx.depthBand] ?? 0.8);
+  state = applyTraversalExtension(state, extensionScales[ctx.depthBand] ?? 0.8, ctx.flow.angle);
+
+  // Parse all d-strings into coords + template for fast per-frame manipulation.
+  // This is the ONLY place parsing happens — all subsequent operations use coords.
+  state = ensureAllParsed(state);
 
   return state;
 }
@@ -78,7 +79,6 @@ function applyClimateInfluence(state: PrimitiveState, ctx: MotifGenerationContex
   const mem = ctx.memory!;
   const flow = ctx.flow;
 
-  // Skip if no meaningful climate exposure
   const totalExposure = mem.laneExposure + mem.curlExposure + mem.frontPressure + mem.basinDepth;
   if (totalExposure < 0.05) return state;
 
@@ -86,63 +86,45 @@ function applyClimateInfluence(state: PrimitiveState, ctx: MotifGenerationContex
   const flowSin = Math.sin(flow.angle);
   const perpCos = Math.cos(flow.angle + Math.PI / 2);
   const perpSin = Math.sin(flow.angle + Math.PI / 2);
+  const laneStretch = 1 + mem.laneExposure * 0.4;
+  const laneCompress = 1 - mem.laneExposure * 0.2;
+  const curlRotation = mem.curlExposure * 0.15;
+  const basinScale = 1 - mem.basinDepth * 0.15;
+  const curlCos = Math.cos(curlRotation);
+  const curlSin = Math.sin(curlRotation);
+  const hasTransform = mem.laneExposure > 0.05 || mem.curlExposure > 0.05 || mem.basinDepth > 0.05;
 
   const paths = state.paths.map((p, i) => {
-    if (!p.active) return p;
+    if (!p.active || !p.coords || p.coords.length === 0) return p;
 
-    let coordIdx = 0;
-    let d = p.d;
+    let coords = p.coords;
 
-    // Lane exposure → stretch along flow direction
-    // Curl exposure → rotate coordinates slightly (spiral bias)
-    // Front pressure → sharpen by scaling perpendicular compression
-    // Basin depth → compress toward center
-    if (mem.laneExposure > 0.05 || mem.curlExposure > 0.05 || mem.frontPressure > 0.05 || mem.basinDepth > 0.05) {
-      const laneStretch = 1 + mem.laneExposure * 0.4;       // stretch along flow up to 1.4x
-      const laneCompress = 1 - mem.laneExposure * 0.2;      // compress perpendicular
-      const curlRotation = mem.curlExposure * 0.15;          // subtle rotation bias
-      const basinScale = 1 - mem.basinDepth * 0.15;          // compression toward center
+    // Transform coords directly — no regex
+    if (hasTransform) {
+      coords = new Float32Array(p.coords);
+      for (let j = 0; j < coords.length; j += 2) {
+        let x = coords[j] * basinScale;
+        let y = (j + 1 < coords.length ? coords[j + 1] : 0) * basinScale;
 
-      const curlCos = Math.cos(curlRotation);
-      const curlSin = Math.sin(curlRotation);
-
-      d = p.d.replace(/-?\d+\.?\d*/g, (match) => {
-        const v = parseFloat(match);
-        const isX = coordIdx % 2 === 0;
-        coordIdx++;
-
-        let result = v;
-
-        // Basin compression: scale toward origin
-        result *= basinScale;
-
-        // Lane stretch: project onto flow/perp axes, stretch flow axis
-        if (isX) {
-          const flowProj = result * flowCos;
-          const perpProj = result * perpCos;
-          result = flowProj * laneStretch + perpProj * laneCompress;
-        } else {
-          const flowProj = result * flowSin;
-          const perpProj = result * perpSin;
-          result = flowProj * laneStretch + perpProj * laneCompress;
-        }
+        // Lane stretch
+        const fxProj = x * flowCos;
+        const pxProj = x * perpCos;
+        x = fxProj * laneStretch + pxProj * laneCompress;
+        const fyProj = y * flowSin;
+        const pyProj = y * perpSin;
+        y = fyProj * laneStretch + pyProj * laneCompress;
 
         // Curl rotation
-        if (isX) {
-          result = result * curlCos;
-        } else {
-          result = result * curlCos + v * curlSin * 0.1;
+        coords[j] = x * curlCos;
+        if (j + 1 < coords.length) {
+          coords[j + 1] = y * curlCos + coords[j + 1] * curlSin * 0.1;
         }
-
-        return result.toFixed(2);
-      });
+      }
     }
 
-    // Front pressure → thicker strokes on leading-edge paths (first few slots)
     const frontWidthBoost = i < 4 ? mem.frontPressure * 0.8 : 0;
     const newWidth = p.strokeWidth * (1 + frontWidthBoost);
 
-    // Climate scar intensity → add dash arrays for reduced confidence
     let dashArray = p.dashArray;
     if (mem.climateScarIntensity > 0.3 && dashArray.length === 0) {
       const scarGap = 4 + (1 - mem.climateScarIntensity) * 6;
@@ -150,11 +132,10 @@ function applyClimateInfluence(state: PrimitiveState, ctx: MotifGenerationContex
       dashArray = [scarDash, scarGap];
     }
 
-    // Shell collapse bias → reduce opacity on enclosure-like paths (later slots)
     const collapseOpacity = i >= 4 ? 1 - mem.shellCollapseBias * 0.3 : 1;
     const newOpacity = p.opacity * collapseOpacity;
 
-    return { ...p, d, strokeWidth: newWidth, opacity: newOpacity, dashArray };
+    return { ...p, coords, strokeWidth: newWidth, opacity: newOpacity, dashArray };
   }) as PrimitiveState['paths'];
 
   return { paths };

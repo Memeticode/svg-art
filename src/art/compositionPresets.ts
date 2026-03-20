@@ -110,9 +110,9 @@ export const COMPOSITION_PRESETS: Record<string, CompositionPreset> = {
   },
   'resonant-drift': {
     id: 'resonant-drift',
-    agentCount: 90,
-    minAgents: 45,
-    maxAgents: 130,
+    agentCount: 10,
+    minAgents: 5,
+    maxAgents: 20,
     depthBands: DEFAULT_DEPTH_BANDS,
     speedRange: [0.004, 0.012],
     morphDurationRange: [6, 14],

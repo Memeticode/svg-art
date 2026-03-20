@@ -1,6 +1,6 @@
 // ── SvgScene: owns root SVG element and layer groups ──
 
-import type { Viewport } from '@/shared/types';
+import { CANVAS } from '@/shared/types';
 import type { LayerGroups } from './renderTypes';
 import { LAYER_ORDER } from './renderTypes';
 
@@ -11,7 +11,6 @@ export interface SvgScene {
   defs: SVGDefsElement;
   bgGroup: SVGGElement;
   layers: LayerGroups;
-  resize(viewport: Viewport): void;
   destroy(): void;
 }
 
@@ -75,26 +74,23 @@ export function createSvgScene(container: HTMLElement): SvgScene {
   for (const band of LAYER_ORDER) {
     const g = document.createElementNS(SVG_NS, 'g');
     g.setAttribute('data-layer', band);
-    // Structural blend modes: ghost and residue glow through foreground,
-    // creating ambiguous depth reading. This is permission, not content.
-    if (band === 'ghost' || band === 'residue') {
-      g.style.mixBlendMode = 'screen';
-    }
+    // Blend modes deferred — they can cause full-screen rendering artifacts
+    // in some browsers. Structural depth ambiguity comes from layered
+    // opacity and scale differences, not compositing tricks.
     svg.appendChild(g);
     layers[band] = g;
   }
 
-  container.appendChild(svg);
+  // Fixed viewBox — CSS handles actual scaling to screen
+  svg.setAttribute('viewBox', `0 0 ${CANVAS.width} ${CANVAS.height}`);
 
-  function resize(viewport: Viewport): void {
-    svg.setAttribute('viewBox', `0 0 ${viewport.width} ${viewport.height}`);
-  }
+  container.appendChild(svg);
 
   function destroy(): void {
     svg.remove();
   }
 
-  return { svg, defs, bgGroup, layers, resize, destroy };
+  return { svg, defs, bgGroup, layers, destroy };
 }
 
 /** Create an SVG glow filter: blur + composite overlay */

@@ -4,7 +4,7 @@ import type { MorphAgent, AgentRenderSnapshot } from './MorphAgent';
 import type { FieldSampler } from '@/field/fieldSampler';
 import type { CompositionPreset } from '@/art/compositionPresets';
 import type { Rng } from '@/shared/rng';
-import type { Viewport } from '@/shared/types';
+import { CANVAS } from '@/shared/types';
 import type { PalettePreset } from '@/art/palettePresets';
 import type { ArtDirectionConfig } from '@/art/artDirectionConfig';
 import { resolveArtDirection } from '@/art/artDirectionConfig';
@@ -25,8 +25,8 @@ const PARALLAX_DRIFT: Record<string, { speed: number; amplitude: number; phaseX:
 export interface AgentSystem {
   agents: MorphAgent[];
   update(dt: number, timeSec: number): void;
-  getSnapshots(viewport: Viewport, timeSec?: number): AgentRenderSnapshot[];
-  reset(viewport: Viewport): void;
+  getSnapshots(timeSec?: number): AgentRenderSnapshot[];
+  reset(): void;
   /** Attach a residue system to emit traces on family-changing reseeds */
   setResidueSystem(system: ResidueSystem): void;
 }
@@ -36,7 +36,6 @@ export function createAgentSystem(
   preset: CompositionPreset,
   palette: PalettePreset,
   sampler: FieldSampler,
-  viewport: Viewport,
 ): AgentSystem {
   const artDirection: ArtDirectionConfig = resolveArtDirection(preset.artDirection);
 
@@ -44,8 +43,6 @@ export function createAgentSystem(
     rng.fork('initial-spawn'),
     preset,
     sampler,
-    viewport.width,
-    viewport.height,
     artDirection,
   );
 
@@ -64,33 +61,27 @@ export function createAgentSystem(
       if (residueSystem && agent.family !== prevFamily) {
         const bandConfig = preset.depthBands[agent.depthBand];
         const colors = resolveColors(palette, agent.paletteOffset, bandConfig, agent.energy, agent.memory.climateScarIntensity);
-        const vp = lastViewport;
-        if (vp) {
-          const activePaths: { d: string; strokeWidth: number }[] = [];
-          for (const p of agent.currentState.paths) {
-            if (p.active) activePaths.push({ d: p.d, strokeWidth: p.strokeWidth });
-          }
-          if (activePaths.length > 0) {
-            residueSystem.emit({
-              paths: activePaths,
-              xPx: agent.xNorm * vp.width,
-              yPx: agent.yNorm * vp.height,
-              scale: agent.scale,
-              rotationDeg: agent.rotationDeg,
-              opacity: 0.10,
-              maxLifeSec: 8 + Math.random() * 7,
-              stroke: colors.stroke,
-            });
-          }
+        const activePaths: { d: string; strokeWidth: number }[] = [];
+        for (const p of agent.currentState.paths) {
+          if (p.active) activePaths.push({ d: p.d, strokeWidth: p.strokeWidth });
+        }
+        if (activePaths.length > 0) {
+          residueSystem.emit({
+            paths: activePaths,
+            xPx: agent.xNorm * CANVAS.width,
+            yPx: agent.yNorm * CANVAS.height,
+            scale: agent.scale,
+            rotationDeg: agent.rotationDeg,
+            opacity: 0.10,
+            maxLifeSec: 8 + Math.random() * 7,
+            stroke: colors.stroke,
+          });
         }
       }
     }
   }
 
-  let lastViewport: Viewport | null = null;
-
-  function getSnapshots(vp: Viewport, timeSec = 0): AgentRenderSnapshot[] {
-    lastViewport = vp;
+  function getSnapshots(timeSec = 0): AgentRenderSnapshot[] {
     const snapshots: AgentRenderSnapshot[] = [];
 
     for (const agent of agents) {
@@ -122,8 +113,8 @@ export function createAgentSystem(
 
       snapshots.push({
         id: agent.id,
-        xPx: (agent.xNorm + driftX) * vp.width,
-        yPx: (agent.yNorm + driftY) * vp.height,
+        xPx: (agent.xNorm + driftX) * CANVAS.width,
+        yPx: (agent.yNorm + driftY) * CANVAS.height,
         scale: agent.scale,
         rotationDeg: agent.rotationDeg,
         opacity: agent.opacity,
@@ -138,13 +129,11 @@ export function createAgentSystem(
     return snapshots;
   }
 
-  function reset(vp: Viewport): void {
+  function reset(): void {
     agents = spawnInitialAgents(
       rng.fork('respawn'),
       preset,
       sampler,
-      vp.width,
-      vp.height,
       artDirection,
     );
   }

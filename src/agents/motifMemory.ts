@@ -34,69 +34,59 @@ export interface MotifMemory {
 
 const SLOT_COUNT = 12; // 12 path slots
 
-// Regex to detect arc commands in path d strings
-const ARC_RE = /[Aa]\s*(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)[,\s]+([01])[,\s]+([01])/g;
-
-/** Measure path closure presence: how many active paths have significant arcs */
+/** Measure path closure presence using template (checks for arc commands).
+ *  Uses coords for start/end distance — no regex per frame. */
 function measurePathClosurePresence(state: PrimitiveState): number {
   let closurePresence = 0;
   let activeCount = 0;
   for (let i = 0; i < PATH_SLOT_COUNT; i++) {
     const p = state.paths[i];
-    if (!p.active) continue;
+    if (!p.active || !p.coords || p.coords.length < 4) continue;
     activeCount++;
-    ARC_RE.lastIndex = 0;
-    let arcScore = 0;
-    let m;
-    while ((m = ARC_RE.exec(p.d)) !== null) {
-      const largeArc = parseInt(m[4]);
-      arcScore += largeArc ? 0.5 : 0.2;
+    // Check template for arc commands (parsed once, not per frame)
+    const hasArc = p.template ? (p.template.includes('A') || p.template.includes('a')) : false;
+    if (hasArc) {
+      // Approximate closure from start-end distance
+      const sx = p.coords[0];
+      const sy = p.coords[1];
+      const ex = p.coords[p.coords.length - 2];
+      const ey = p.coords[p.coords.length - 1];
+      const dist = Math.sqrt((ex - sx) * (ex - sx) + (ey - sy) * (ey - sy));
+      closurePresence += Math.max(0, 1 - dist / 15) * 0.5;
     }
-    closurePresence += Math.min(arcScore, 1);
   }
   return activeCount > 0 ? closurePresence / activeCount : 0;
 }
 
-/** Measure how centered path endpoints are around origin */
+/** Measure how centered path start points are around origin — uses coords directly */
 function measureCenteredness(state: PrimitiveState): number {
   let sumDist = 0;
   let count = 0;
-  const startRe = /[Mm]\s*(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)/g;
   for (let i = 0; i < PATH_SLOT_COUNT; i++) {
     const p = state.paths[i];
-    if (!p.active) continue;
-    startRe.lastIndex = 0;
-    const m = startRe.exec(p.d);
-    if (m) {
-      const x = parseFloat(m[1]);
-      const y = parseFloat(m[2]);
-      sumDist += Math.sqrt(x * x + y * y);
-      count++;
-    }
+    if (!p.active || !p.coords || p.coords.length < 2) continue;
+    const x = p.coords[0];
+    const y = p.coords[1];
+    sumDist += Math.sqrt(x * x + y * y);
+    count++;
   }
   if (count === 0) return 0;
-  const avgDist = sumDist / count;
-  return Math.max(0, 1 - avgDist / 20); // within 20 units = centered
+  return Math.max(0, 1 - sumDist / count / 20);
 }
 
-/** Measure spatial asymmetry of active path distribution (left vs right, top vs bottom) */
+/** Measure spatial asymmetry using coords directly */
 function measurePathAsymmetry(state: PrimitiveState): number {
   let leftCount = 0;
   let rightCount = 0;
   let topCount = 0;
   let bottomCount = 0;
-  const startRe = /[Mm]\s*(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)/g;
   for (let i = 0; i < PATH_SLOT_COUNT; i++) {
     const p = state.paths[i];
-    if (!p.active) continue;
-    startRe.lastIndex = 0;
-    const m = startRe.exec(p.d);
-    if (m) {
-      const x = parseFloat(m[1]);
-      const y = parseFloat(m[2]);
-      if (x < 0) leftCount++; else rightCount++;
-      if (y < 0) topCount++; else bottomCount++;
-    }
+    if (!p.active || !p.coords || p.coords.length < 2) continue;
+    const x = p.coords[0];
+    const y = p.coords[1];
+    if (x < 0) leftCount++; else rightCount++;
+    if (y < 0) topCount++; else bottomCount++;
   }
   const total = leftCount + rightCount;
   if (total < 2) return 0;

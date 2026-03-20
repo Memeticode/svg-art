@@ -11,6 +11,7 @@ import type { PrimitiveState } from '@/geometry/primitiveTypes';
 import { PATH_SLOT_COUNT } from '@/geometry/primitiveTypes';
 import type { MotifMemory } from './motifMemory';
 import { clamp } from '@/shared/math';
+import { ensureAllParsed } from '@/geometry/primitiveState';
 import { clonePrimitiveState } from '@/geometry/primitiveState';
 import { createMotifState } from '@/art/motifFactories';
 import { createMacroFormState, pickMacroFormType } from '@/art/macroFormFactories';
@@ -29,59 +30,45 @@ export interface DriftContext {
 }
 
 /** Perturb targetState in-place based on field conditions and memory.
- *  Small per-frame mutations that make the morph destination itself a moving target. */
+ *  Operates directly on Float32Array coords — no regex, no string allocation. */
 export function applyTargetDrift(target: PrimitiveState, ctx: DriftContext): void {
-  const { flow, region, memory, dt, phase } = ctx;
-  // Minimum drift floor: no motif should be structurally static
-  const driftScale = Math.max(region.deformationAggression, 0.15) * dt;
+  const { flow, region, memory, dt } = ctx;
 
   const cosA = Math.cos(flow.angle);
   const sinA = Math.sin(flow.angle);
   const magDrift = Math.max(flow.magnitude, 0.1) * 0.15 * dt;
 
-  // Drift path control points along flow direction
+  // Anti-closure shear setup
+  const roundnessFatigue = memory.roundnessFatigue ?? 0;
+  const hasAntiClosure = roundnessFatigue > 0.5;
+  const antiClosureDrift = hasAntiClosure ? (roundnessFatigue - 0.5) * 0.2 * dt : 0;
+  const shearAngle = memory.dominantForceAngle + Math.PI / 2;
+  const shearCos = Math.cos(shearAngle) * antiClosureDrift;
+  const shearSin = Math.sin(shearAngle) * antiClosureDrift;
+
   for (let i = 0; i < PATH_SLOT_COUNT; i++) {
     const p = target.paths[i];
-    if (!p.active) continue;
+    if (!p.active || !p.coords || p.coords.length === 0) continue;
+
     const inertia = memory.slotInertia[i];
     const pathDrift = magDrift / inertia;
-    if (pathDrift < 0.001) continue;
 
-    let coordIdx = 0;
-    target.paths[i] = {
-      ...p,
-      d: p.d.replace(/-?\d+\.?\d*/g, (match) => {
-        const v = parseFloat(match);
-        const shift = (coordIdx++ % 2 === 0) ? cosA * pathDrift : sinA * pathDrift;
-        return (v + shift).toFixed(2);
-      }),
-    };
-  }
+    // Check if this path has arc commands (for anti-closure)
+    const hasArcs = hasAntiClosure && (p.template ? p.template.includes('A') : false);
 
-  // Circles and ring are doctrinally inactive — no drift needed.
+    if (pathDrift < 0.001 && !hasArcs) continue;
 
-  // Anti-closure path drift: when roundnessFatigue is high, perturb arc-heavy paths
-  const roundnessFatigue = (memory as any).roundnessFatigue ?? 0;
-  if (roundnessFatigue > 0.5) {
-    const antiClosureDrift = (roundnessFatigue - 0.5) * 0.2 * dt;
-    for (let i = 0; i < PATH_SLOT_COUNT; i++) {
-      const p = target.paths[i];
-      if (!p.active) continue;
-      // Check if path contains arc commands
-      if (/[Aa]/.test(p.d)) {
-        // Shift arc coordinates to break closure
-        let coordIdx = 0;
-        const shearAngle = memory.dominantForceAngle + Math.PI / 2;
-        const shearCos = Math.cos(shearAngle) * antiClosureDrift;
-        const shearSin = Math.sin(shearAngle) * antiClosureDrift;
-        target.paths[i] = {
-          ...p,
-          d: p.d.replace(/-?\d+\.?\d*/g, (match) => {
-            const v = parseFloat(match);
-            const shift = (coordIdx++ % 2 === 0) ? shearCos : shearSin;
-            return (v + shift).toFixed(2);
-          }),
-        };
+    // Drift coords directly — no regex
+    const coords = p.coords;
+    for (let j = 0; j < coords.length; j++) {
+      const isX = j % 2 === 0;
+      // Flow drift
+      if (pathDrift >= 0.001) {
+        coords[j] += isX ? cosA * pathDrift : sinA * pathDrift;
+      }
+      // Anti-closure shear on arc-containing paths
+      if (hasArcs) {
+        coords[j] += isX ? shearCos : shearSin;
       }
     }
   }
@@ -164,7 +151,8 @@ export function applySoftReseed(
   if (artDirection) {
     newTarget = applyArtDirectionPenalty(newTarget, artDirection);
   }
-  agent.targetState = newTarget;
+  // Re-parse coords after penalty may have modified d-strings
+  agent.targetState = ensureAllParsed(newTarget);
 
   // Start at small progress (not 0) so interpolation begins near current visual state
   agent.morphProgress = 0.08;

@@ -3,14 +3,14 @@
 import type { MorphAgent } from '@/agents/MorphAgent';
 import type { FieldSampler } from '@/field/fieldSampler';
 import type { ClimateController } from '@/field/climateController';
-import type { Viewport } from '@/shared/types';
+import { CANVAS, type Viewport } from '@/shared/types';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 export type DebugMode = 'regions' | 'flow' | 'density' | 'families' | 'comfort' | 'climate' | 'memory' | 'causality' | 'timescales' | 'continuity';
 
 export interface DebugOverlays {
-  update(agents: MorphAgent[], sampler: FieldSampler, viewport: Viewport, timeSec: number, climate?: ClimateController): void;
+  update(agents: MorphAgent[], sampler: FieldSampler, timeSec: number, climate?: ClimateController): void;
   setModes(modes: DebugMode[]): void;
   destroy(): void;
 }
@@ -41,7 +41,8 @@ export function createDebugOverlays(svg: SVGSVGElement): DebugOverlays {
     }
   }
 
-  function update(agents: MorphAgent[], sampler: FieldSampler, viewport: Viewport, timeSec: number, climate?: ClimateController): void {
+  function update(agents: MorphAgent[], sampler: FieldSampler, timeSec: number, climate?: ClimateController): void {
+    const viewport = CANVAS;
     group.innerHTML = '';
     if (activeModes.length === 0) return;
 

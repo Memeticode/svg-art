@@ -1,7 +1,6 @@
 // ── Interpolation between PrimitiveState values ──
-//
-// Core rule: motif families must produce compatible path command formats
-// per slot, so numeric interpolation of path data strings is feasible.
+// Uses Float32Array coords for fast numeric interpolation.
+// No regex per frame — coords are pre-parsed at creation time.
 
 import type {
   PrimitiveState,
@@ -11,47 +10,60 @@ import { PATH_SLOT_COUNT } from './primitiveTypes';
 import { lerp, clamp } from '@/shared/math';
 import type { StaggerProfile } from '@/agents/MorphAgent';
 
-/** Interpolate two path `d` strings that share the same command structure.
- *  Falls back to source or target if structures don't match. */
-function lerpPathD(a: string, b: string, t: number): string {
-  // Extract all numbers from both strings
-  const numsA = a.match(/-?\d+\.?\d*/g);
-  const numsB = b.match(/-?\d+\.?\d*/g);
-
-  if (!numsA || !numsB || numsA.length !== numsB.length) {
-    // Incompatible structures — snap at halfway
-    return t < 0.5 ? a : b;
-  }
-
-  let idx = 0;
-  return a.replace(/-?\d+\.?\d*/g, () => {
-    const va = parseFloat(numsA[idx]);
-    const vb = parseFloat(numsB[idx]);
-    idx++;
-    const result = lerp(va, vb, t);
-    return Math.abs(result) < 0.01 ? '0' : result.toFixed(2);
-  });
-}
-
-function lerpDashArray(a: number[], b: number[], t: number): number[] {
-  const len = Math.max(a.length, b.length);
-  if (len === 0) return [];
-  const result: number[] = [];
-  for (let i = 0; i < len; i++) {
-    const va = i < a.length ? a[i] : 0;
-    const vb = i < b.length ? b[i] : 0;
-    result.push(lerp(va, vb, t));
-  }
-  return result;
-}
-
+/** Interpolate two paths using their pre-parsed coord arrays.
+ *  ALWAYS produces valid coords+template — never returns undefined. */
 function lerpPath(a: PathPrimitiveState, b: PathPrimitiveState, t: number): PathPrimitiveState {
+  const active = t < 0.5 ? a.active : b.active;
+
+  const ac = a.coords;
+  const bc = b.coords;
+
+  let coords: Float32Array;
+  let template: string;
+
+  if (ac && bc && ac.length === bc.length && ac.length > 0) {
+    // Both have coords of same length — interpolate directly
+    coords = new Float32Array(ac.length);
+    for (let i = 0; i < coords.length; i++) {
+      coords[i] = ac[i] + (bc[i] - ac[i]) * t;
+    }
+    template = (t < 0.5 ? a.template : b.template) || 'M%0 %1';
+  } else if (ac && ac.length > 0 && a.template) {
+    // Only source has coords — use source
+    coords = new Float32Array(ac);
+    template = a.template;
+  } else if (bc && bc.length > 0 && b.template) {
+    // Only target has coords — use target
+    coords = new Float32Array(bc);
+    template = b.template;
+  } else {
+    // Neither has coords — use zero fallback
+    coords = new Float32Array([0, 0]);
+    template = 'M%0 %1';
+  }
+
+  // Dash array interpolation
+  const dashLen = Math.max(a.dashArray.length, b.dashArray.length);
+  let dashArray: number[];
+  if (dashLen === 0) {
+    dashArray = [];
+  } else {
+    dashArray = [];
+    for (let i = 0; i < dashLen; i++) {
+      const va = i < a.dashArray.length ? a.dashArray[i] : 0;
+      const vb = i < b.dashArray.length ? b.dashArray[i] : 0;
+      dashArray.push(lerp(va, vb, t));
+    }
+  }
+
   return {
-    active: t < 0.5 ? a.active : b.active,
-    d: lerpPathD(a.d, b.d, t),
+    active,
+    d: '', // rebuilt at render time from coords + template
+    coords,
+    template,
     strokeWidth: lerp(a.strokeWidth, b.strokeWidth, t),
     opacity: lerp(a.opacity, b.opacity, t),
-    dashArray: lerpDashArray(a.dashArray, b.dashArray, t),
+    dashArray,
   };
 }
 
@@ -64,13 +76,10 @@ export function interpolatePrimitiveState(
   for (let i = 0; i < PATH_SLOT_COUNT; i++) {
     (paths as PathPrimitiveState[])[i] = lerpPath(a.paths[i], b.paths[i], t);
   }
-
   return { paths };
 }
 
-/** Apply a stagger offset to a global t value.
- *  The parabolic window (1-t)*t*4 makes stagger strongest at mid-morph,
- *  preventing artifacts at endpoints. */
+/** Apply a stagger offset to a global t value. */
 function staggerT(globalT: number, offset: number): number {
   return clamp(globalT + offset * (1 - globalT) * globalT * 4, 0, 1);
 }
@@ -87,6 +96,5 @@ export function staggeredInterpolatePrimitiveState(
     const st = staggerT(t, profile.pathOffsets[i] ?? 0);
     (paths as PathPrimitiveState[])[i] = lerpPath(a.paths[i], b.paths[i], st);
   }
-
   return { paths };
 }

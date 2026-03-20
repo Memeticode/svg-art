@@ -13,7 +13,9 @@
 
 export interface PathPrimitiveState {
   active: boolean;
-  d: string;
+  d: string;                    // path d-string (set at creation, rebuilt at render time from coords)
+  coords?: Float32Array;        // numeric coordinates — populated by ensureAllParsed()
+  template?: string;            // command template — populated by ensureAllParsed()
   strokeWidth: number;
   opacity: number;
   dashArray: number[];

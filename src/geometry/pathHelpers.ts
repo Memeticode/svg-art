@@ -36,9 +36,21 @@ export function arcPath(
   return `M${sx.toFixed(2)} ${sy.toFixed(2)} A${rx.toFixed(2)} ${ry.toFixed(2)} ${rotation.toFixed(1)} ${largeArc} ${sweepFlag} ${ex.toFixed(2)} ${ey.toFixed(2)}`;
 }
 
-/** Straight line segment */
+/** Gentle curve between two points — never a straight line.
+ *  Control points offset perpendicular to the line for subtle curvature. */
 export function linePath(x1: number, y1: number, x2: number, y2: number): string {
-  return `M${x1.toFixed(2)} ${y1.toFixed(2)} L${x2.toFixed(2)} ${y2.toFixed(2)}`;
+  const mx = (x1 + x2) * 0.5;
+  const my = (y1 + y2) * 0.5;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  // Perpendicular offset: ~8% of length for subtle curvature
+  const offset = len * 0.08;
+  const nx = -dy / (len || 1);
+  const ny = dx / (len || 1);
+  const cpx = mx + nx * offset;
+  const cpy = my + ny * offset;
+  return `M${x1.toFixed(2)} ${y1.toFixed(2)} Q${cpx.toFixed(2)} ${cpy.toFixed(2)} ${x2.toFixed(2)} ${y2.toFixed(2)}`;
 }
 
 /** Quadratic bezier curve */
@@ -60,7 +72,7 @@ export function cubicPath(
   return `M${x1.toFixed(2)} ${y1.toFixed(2)} C${cp1x.toFixed(2)} ${cp1y.toFixed(2)} ${cp2x.toFixed(2)} ${cp2y.toFixed(2)} ${x2.toFixed(2)} ${y2.toFixed(2)}`;
 }
 
-/** Radial spoke from center outward */
+/** Radial spoke from center outward — gentle curve, not a straight line */
 export function spokePath(
   cx: number,
   cy: number,
@@ -72,7 +84,13 @@ export function spokePath(
   const y1 = cy + Math.sin(angle) * innerR;
   const x2 = cx + Math.cos(angle) * outerR;
   const y2 = cy + Math.sin(angle) * outerR;
-  return linePath(x1, y1, x2, y2);
+  // Offset control point perpendicular to spoke for gentle curvature
+  const midR = (innerR + outerR) * 0.5;
+  const perpAngle = angle + Math.PI / 2;
+  const offset = (outerR - innerR) * 0.1;
+  const cpx = cx + Math.cos(angle) * midR + Math.cos(perpAngle) * offset;
+  const cpy = cy + Math.sin(angle) * midR + Math.sin(perpAngle) * offset;
+  return quadPath(x1, y1, cpx, cpy, x2, y2);
 }
 
 /** Crescent shape via two overlapping arcs */
@@ -119,16 +137,22 @@ export function ribPath(
 
 // ── Asymmetric / interrupted path helpers ──
 
-/** Polyline with a sharp kink point — angular, not smooth */
+/** Two-segment curve through a kink point — smooth quadratic beziers */
 export function kinkedLinePath(
   x1: number, y1: number,
   kinkX: number, kinkY: number,
   x2: number, y2: number,
 ): string {
-  return `M${x1.toFixed(2)} ${y1.toFixed(2)} L${kinkX.toFixed(2)} ${kinkY.toFixed(2)} L${x2.toFixed(2)} ${y2.toFixed(2)}`;
+  // Two quadratic segments meeting at the kink, with control points
+  // offset for gentle curvature through each segment
+  const mid1x = (x1 + kinkX) * 0.5;
+  const mid1y = (y1 + kinkY) * 0.5;
+  const mid2x = (kinkX + x2) * 0.5;
+  const mid2y = (kinkY + y2) * 0.5;
+  return `M${x1.toFixed(2)} ${y1.toFixed(2)} Q${mid1x.toFixed(2)} ${mid1y.toFixed(2)} ${kinkX.toFixed(2)} ${kinkY.toFixed(2)} Q${mid2x.toFixed(2)} ${mid2y.toFixed(2)} ${x2.toFixed(2)} ${y2.toFixed(2)}`;
 }
 
-/** Compound arcs at different radii stitched with line segments */
+/** Compound arcs at different radii stitched with smooth curves */
 export function multiArcPath(
   cx: number,
   cy: number,
@@ -148,24 +172,42 @@ export function multiArcPath(
     if (i === 0) {
       parts.push(`M${sx.toFixed(2)} ${sy.toFixed(2)}`);
     } else {
-      parts.push(`L${sx.toFixed(2)} ${sy.toFixed(2)}`);
+      // Smooth curve connector between arc segments instead of straight line
+      const prevEnd = parts[parts.length - 1];
+      const midAngle = (seg.startAngle + (segments[i - 1].startAngle + segments[i - 1].sweep)) * 0.5;
+      const midR = (seg.r + segments[i - 1].r) * 0.5;
+      const cpx = cx + Math.cos(midAngle) * midR;
+      const cpy = cy + Math.sin(midAngle) * midR;
+      parts.push(`Q${cpx.toFixed(2)} ${cpy.toFixed(2)} ${sx.toFixed(2)} ${sy.toFixed(2)}`);
     }
     parts.push(`A${seg.r.toFixed(2)} ${seg.r.toFixed(2)} 0 ${largeArc} ${sweepFlag} ${ex.toFixed(2)} ${ey.toFixed(2)}`);
   }
   return parts.join(' ');
 }
 
-/** Angular polyline from arbitrary points — fractured, geological */
+/** Smooth polyline through arbitrary points — quadratic curves between segments */
 export function jaggedPath(points: Vec2[]): string {
   if (points.length < 2) return 'M0 0';
-  const parts = [`M${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`];
-  for (let i = 1; i < points.length; i++) {
-    parts.push(`L${points[i].x.toFixed(2)} ${points[i].y.toFixed(2)}`);
+  if (points.length === 2) {
+    return linePath(points[0].x, points[0].y, points[1].x, points[1].y);
   }
+  // Use quadratic bezier curves: each point becomes a control point
+  // for a smooth curve passing near it
+  const parts = [`M${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`];
+  for (let i = 1; i < points.length - 1; i++) {
+    // Control point is the current point, endpoint is midpoint to next
+    const midX = (points[i].x + points[i + 1].x) * 0.5;
+    const midY = (points[i].y + points[i + 1].y) * 0.5;
+    parts.push(`Q${points[i].x.toFixed(2)} ${points[i].y.toFixed(2)} ${midX.toFixed(2)} ${midY.toFixed(2)}`);
+  }
+  // Final segment: curve to last point
+  const last = points[points.length - 1];
+  const prev = points[points.length - 2];
+  parts.push(`Q${prev.x.toFixed(2)} ${prev.y.toFixed(2)} ${last.x.toFixed(2)} ${last.y.toFixed(2)}`);
   return parts.join(' ');
 }
 
-/** Spiral arc segment — radius changes across the sweep, feels like unfolding */
+/** Spiral arc segment — radius changes across the sweep, smooth cubic curves */
 export function spiralSegmentPath(
   cx: number,
   cy: number,
@@ -175,14 +217,33 @@ export function spiralSegmentPath(
   sweep: number,
   steps = 12,
 ): string {
-  const parts: string[] = [];
+  // Generate sample points along the spiral
+  const pts: Vec2[] = [];
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
     const angle = startAngle + sweep * t;
     const r = startR + (endR - startR) * t;
-    const x = cx + Math.cos(angle) * r;
-    const y = cy + Math.sin(angle) * r;
-    parts.push(i === 0 ? `M${x.toFixed(2)} ${y.toFixed(2)}` : `L${x.toFixed(2)} ${y.toFixed(2)}`);
+    pts.push({ x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r });
+  }
+  if (pts.length < 2) return 'M0 0';
+
+  // Build smooth cubic bezier chain through the sample points
+  // Using Catmull-Rom-style tangent estimation
+  const parts = [`M${pts[0].x.toFixed(2)} ${pts[0].y.toFixed(2)}`];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[Math.min(pts.length - 1, i + 2)];
+
+    // Catmull-Rom tangents → cubic bezier control points
+    const tension = 0.3;
+    const cp1x = p1.x + (p2.x - p0.x) * tension;
+    const cp1y = p1.y + (p2.y - p0.y) * tension;
+    const cp2x = p2.x - (p3.x - p1.x) * tension;
+    const cp2y = p2.y - (p3.y - p1.y) * tension;
+
+    parts.push(`C${cp1x.toFixed(2)} ${cp1y.toFixed(2)} ${cp2x.toFixed(2)} ${cp2y.toFixed(2)} ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`);
   }
   return parts.join(' ');
 }
@@ -467,14 +528,23 @@ export function scaffoldStrutPath(
   const len = Math.sqrt(dx * dx + dy * dy) || 1;
   const nx = -dy / len; // perpendicular
   const ny = dx / len;
-  const parts = [`M${x1.toFixed(2)} ${y1.toFixed(2)} L${x2.toFixed(2)} ${y2.toFixed(2)}`];
+  // Main strut as a gentle curve (not straight line)
+  const midX = (x1 + x2) * 0.5 + nx * len * 0.06;
+  const midY = (y1 + y2) * 0.5 + ny * len * 0.06;
+  const parts = [`M${x1.toFixed(2)} ${y1.toFixed(2)} Q${midX.toFixed(2)} ${midY.toFixed(2)} ${x2.toFixed(2)} ${y2.toFixed(2)}`];
   for (let i = 1; i <= notchCount; i++) {
     const t = i / (notchCount + 1);
     const bx = x1 + dx * t;
     const by = y1 + dy * t;
-    // Alternating-depth notches for asymmetry
     const depth = notchDepth * (0.6 + 0.4 * (i % 2));
-    parts.push(`M${(bx - nx * depth).toFixed(2)} ${(by - ny * depth).toFixed(2)} L${(bx + nx * depth * 0.7).toFixed(2)} ${(by + ny * depth * 0.7).toFixed(2)}`);
+    // Notch ticks as short curves
+    const nsx = bx - nx * depth;
+    const nsy = by - ny * depth;
+    const nex = bx + nx * depth * 0.7;
+    const ney = by + ny * depth * 0.7;
+    const ncpx = bx + dx / len * depth * 0.3;
+    const ncpy = by + dy / len * depth * 0.3;
+    parts.push(`M${nsx.toFixed(2)} ${nsy.toFixed(2)} Q${ncpx.toFixed(2)} ${ncpy.toFixed(2)} ${nex.toFixed(2)} ${ney.toFixed(2)}`);
   }
   return parts.join(' ');
 }

@@ -7,6 +7,7 @@ import type { SvgScene } from './SvgScene';
 import type { SvgPool, PooledAgentNode } from './SvgPool';
 import type { PrimitiveState } from '@/geometry/primitiveTypes';
 import { PATH_SLOT_COUNT, TAPER_SEGMENTS } from '@/geometry/primitiveTypes';
+import { renderCoordsToD } from '@/geometry/primitiveState';
 
 // Taper profile: stroke-width multiplier per segment (thick → thin)
 const TAPER_WIDTH = [1.0, 0.5, 0.18];
@@ -91,11 +92,16 @@ export function createSvgAgentRenderer(
         ? 1.0 + (0.5 - i / PATH_SLOT_COUNT) * 0.25  // range: ~1.12 to ~0.88
         : 1.0;
 
+      // Build d-string from coords at render time (only place this happens per frame)
+      const dStr = p.coords && p.template && p.coords.length > 0
+        ? renderCoordsToD(p.template, p.coords)
+        : p.d;
+
       const baseWidth = Math.max(1.0, p.strokeWidth * 1.8);
       for (let s = 0; s < TAPER_SEGMENTS; s++) {
         const el = node.paths[baseElIdx + s];
         el.removeAttribute('display');
-        el.setAttribute('d', p.d);
+        el.setAttribute('d', dStr);
         el.setAttribute('stroke', stroke);
         el.setAttribute('stroke-width', (baseWidth * TAPER_WIDTH[s]).toFixed(2));
         el.setAttribute('opacity', (p.opacity * TAPER_OPACITY[s] * slotGradientMod).toFixed(3));

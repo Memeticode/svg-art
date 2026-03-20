@@ -28,66 +28,24 @@ function smoothstep(edge0: number, edge1: number, x: number): number {
   return t * t * (3 - 2 * t);
 }
 
-// Regex to find SVG arc commands: A rx ry rotation largeArc sweep ex ey
-const ARC_RE = /[Aa]\s*(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)[,\s]+([01])[,\s]+([01])[,\s]+(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)/g;
+/** Measure closure/circularity using coords directly — no regex per frame.
+ *  Uses start-end distance as a proxy for self-closure,
+ *  and template inspection for arc presence. */
+function measurePathCircularity(p: { coords?: Float32Array; template?: string }): number {
+  if (!p.coords || p.coords.length < 4) return 0;
+  // Self-closure: start ≈ end (from coords)
+  const sx = p.coords[0];
+  const sy = p.coords[1];
+  const ex = p.coords[p.coords.length - 2];
+  const ey = p.coords[p.coords.length - 1];
+  const dist = Math.sqrt((sx - ex) * (sx - ex) + (sy - ey) * (sy - ey));
+  const selfClosure = Math.max(0, 1 - dist / 5);
 
-// Extract starting coordinate from path d string
-function extractPathStart(d: string): { x: number; y: number } | null {
-  const m = d.match(/[Mm]\s*(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)/);
-  if (!m) return null;
-  return { x: parseFloat(m[1]), y: parseFloat(m[2]) };
-}
+  // Arc presence from template (checked once, not per frame)
+  const hasArc = p.template ? (p.template.includes('A') || p.template.includes('a')) : false;
+  if (!hasArc) return selfClosure * 0.3;
 
-// Extract last coordinate from path d string
-function extractPathEnd(d: string): { x: number; y: number } | null {
-  const coords: Array<{ x: number; y: number }> = [];
-  const numRe = /-?\d+\.?\d*/g;
-  let match;
-  while ((match = numRe.exec(d)) !== null) {
-    coords.push({ x: parseFloat(match[0]), y: 0 });
-  }
-  // Rough: take last two numbers as x,y
-  const allNums: number[] = [];
-  const re2 = /-?\d+\.?\d*/g;
-  let m2;
-  while ((m2 = re2.exec(d)) !== null) {
-    allNums.push(parseFloat(m2[0]));
-  }
-  if (allNums.length >= 2) {
-    return { x: allNums[allNums.length - 2], y: allNums[allNums.length - 1] };
-  }
-  return null;
-}
-
-/** Measure how "circular" a path's arcs are. Returns 0..1. */
-function measurePathCircularity(d: string): number {
-  let totalArcSweep = 0;
-  let arcCount = 0;
-  ARC_RE.lastIndex = 0;
-  let m;
-  while ((m = ARC_RE.exec(d)) !== null) {
-    const rx = parseFloat(m[1]);
-    const ry = parseFloat(m[2]);
-    // Approximate sweep from arc radius similarity (circular = rx ≈ ry)
-    const radiusSimilarity = Math.min(rx, ry) / (Math.max(rx, ry) + 0.001);
-    // Large arc flag contributes more
-    const largeArc = parseInt(m[4]);
-    const sweepContribution = largeArc ? 0.6 : 0.3;
-    totalArcSweep += sweepContribution * radiusSimilarity;
-    arcCount++;
-  }
-
-  // Self-closure: start ≈ end
-  const start = extractPathStart(d);
-  const end = extractPathEnd(d);
-  let selfClosure = 0;
-  if (start && end) {
-    const dist = Math.sqrt((start.x - end.x) ** 2 + (start.y - end.y) ** 2);
-    selfClosure = Math.max(0, 1 - dist / 5); // within 5 units = nearly closed
-  }
-
-  if (arcCount === 0) return selfClosure * 0.3;
-  return clamp(totalArcSweep / arcCount + selfClosure * 0.3, 0, 1);
+  return clamp(0.3 + selfClosure * 0.3, 0, 1);
 }
 
 export function evaluateIconScore(
@@ -103,15 +61,16 @@ export function evaluateIconScore(
 
   for (let i = 0; i < PATH_SLOT_COUNT; i++) {
     const p = state.paths[i];
-    if (!p.active) continue;
+    if (!p.active || !p.coords || p.coords.length < 4) continue;
     activePathCount++;
-    closureSum += measurePathCircularity(p.d);
+    closureSum += measurePathCircularity(p);
 
-    // Gather endpoint data for symmetry scoring
-    const start = extractPathStart(p.d);
-    const end = extractPathEnd(p.d);
-    for (const pt of [start, end]) {
-      if (!pt) continue;
+    // Gather endpoint data from coords (no regex)
+    const sx = p.coords[0];
+    const sy = p.coords[1];
+    const ex = p.coords[p.coords.length - 2];
+    const ey = p.coords[p.coords.length - 1];
+    for (const pt of [{ x: sx, y: sy }, { x: ex, y: ey }]) {
       comX += pt.x;
       comY += pt.y;
       pointCount++;
@@ -190,18 +149,19 @@ export function applyImpulse(
   state: PrimitiveState,
   impulse: DestabilizationImpulse,
 ): PrimitiveState {
-  // Shift path control points along force direction + break high-closure arcs
+  // Shift coords directly — no regex
   const cosF = Math.cos(impulse.forceAngle) * impulse.forceStrength;
   const sinF = Math.sin(impulse.forceAngle) * impulse.forceStrength;
+  const noiseMul = impulse.pathNoiseIntensity * 0.5;
+
   const paths = state.paths.map((p) => {
-    if (!p.active || impulse.forceStrength < 0.01) return p;
-    let coordIdx = 0;
-    const d = p.d.replace(/-?\d+\.?\d*/g, (match) => {
-      const v = parseFloat(match);
-      const shift = (coordIdx++ % 2 === 0) ? cosF : sinF;
-      return (v + shift * impulse.pathNoiseIntensity * 0.5).toFixed(2);
-    });
-    return { ...p, d, opacity: clamp(p.opacity + impulse.opacityPressure, 0, 1) };
+    if (!p.active || impulse.forceStrength < 0.01 || !p.coords || p.coords.length === 0) return p;
+    const coords = new Float32Array(p.coords);
+    for (let j = 0; j < coords.length; j++) {
+      const shift = (j % 2 === 0) ? cosF : sinF;
+      coords[j] += shift * noiseMul;
+    }
+    return { ...p, coords, opacity: clamp(p.opacity + impulse.opacityPressure, 0, 1) };
   }) as PrimitiveState['paths'];
 
   return { paths };

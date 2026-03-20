@@ -10,8 +10,7 @@ import { assignDepthBand } from './depthBands';
 import { createMotifState } from '@/art/motifFactories';
 import { createMacroFormState, pickMacroFormType } from '@/art/macroFormFactories';
 import { applyArtDirectionPenalty } from '@/art/postFilter';
-import { clonePrimitiveState } from '@/geometry/primitiveState';
-import { agentCountForViewport } from '@/shared/perf';
+import { clonePrimitiveState, ensureAllParsed } from '@/geometry/primitiveState';
 import { clamp, lerp } from '@/shared/math';
 import { createMotifMemory } from './motifMemory';
 
@@ -102,8 +101,8 @@ export function spawnAgent(
 
   // Apply art direction penalties (no-circle doctrine, closure breaking)
   if (artDirection) {
-    sourceState = applyArtDirectionPenalty(sourceState, artDirection);
-    targetState = applyArtDirectionPenalty(targetState, artDirection);
+    sourceState = ensureAllParsed(applyArtDirectionPenalty(sourceState, artDirection));
+    targetState = ensureAllParsed(applyArtDirectionPenalty(targetState, artDirection));
   }
 
   return {
@@ -145,17 +144,9 @@ export function spawnInitialAgents(
   rng: Rng,
   preset: CompositionPreset,
   sampler: FieldSampler,
-  viewportWidth: number,
-  viewportHeight: number,
   artDirection?: ArtDirectionConfig,
 ): MorphAgent[] {
-  const count = agentCountForViewport(
-    viewportWidth,
-    viewportHeight,
-    preset.agentCount,
-    preset.minAgents,
-    preset.maxAgents,
-  );
+  const count = preset.agentCount;
 
   const agents: MorphAgent[] = [];
   const uniformCount = Math.ceil(count * 0.35);
