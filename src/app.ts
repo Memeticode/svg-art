@@ -3,11 +3,11 @@
 import { createRng } from './rng';
 import { createFlowField } from './flow';
 import type { CurveAgent } from './schema';
-import { createCurve, updateCurve, buildPath, perimeterToXY, recomputeTargets } from './curve';
+import { createCurve, updateCurve, buildPath, perimeterToXY, perimeterDist, minSafeGap } from './curve';
 import { setViewport, vp, xyToPerimeter, getPerimeter } from './viewport';
 import { createLoop } from './loop';
 import { initDebug } from './debug/index';
-import { createAgentView, removeAgentView, setLineCount, type AgentView } from './render/agents';
+import { createAgentView, removeAgentView, type AgentView } from './render/agents';
 import { renderFlowOverlay } from './render/flow-overlay';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -73,9 +73,9 @@ export function createApp(seed: string) {
   let views: AgentView[] = [];
   let agentCounter = 0;
 
-  const spawnAgent = (lineCount = 2) => {
+  const spawnAgent = () => {
     const agent = createCurve(rng.fork(`agent-${agentCounter++}`));
-    const view = createAgentView(agentLayer, lineCount);
+    const view = createAgentView(agentLayer);
     return { agent, view };
   };
 
@@ -169,7 +169,10 @@ export function createApp(seed: string) {
       const agent = agents[h.agentIdx];
       if (!agent) continue;
       const p = h.endpoint === 'A' ? agent.pA : agent.pB;
-      const end = h.endpoint === 'A' ? agent.endA : agent.endB;
+      // Total width at this end = edge1 + edge2 offsets
+      const totalWidth = h.endpoint === 'A'
+        ? (agent.edge1A + agent.edge2A) * P
+        : (agent.edge1B + agent.edge2B) * P;
       const pt = perimeterToXY(p);
       const sc = toScreen(pt);
 
@@ -189,8 +192,8 @@ export function createApp(seed: string) {
       h.el.style.top = hy + 'px';
       h.el.style.display = '';
 
-      // Width indicator bar: spans the width of this end, outside the border
-      const halfW = end.width * P / 2;
+      // Width indicator bar: spans the total width of this end, outside the border
+      const halfW = totalWidth / 2;
       const p1 = perimeterToXY(p - halfW / P);
       const p2 = perimeterToXY(p + halfW / P);
       const s1 = toScreen(p1);
@@ -233,8 +236,13 @@ export function createApp(seed: string) {
     const { x, y } = screenToSvg(e.clientX, e.clientY);
     const p = xyToPerimeter(x, y);
     const agent = agents[dragTarget.agentIdx];
-    if (dragTarget.endpoint === 'A') agent.pA = p;
-    else agent.pB = p;
+
+    // Only apply if edges won't overlap
+    const other = dragTarget.endpoint === 'A' ? agent.pB : agent.pA;
+    if (perimeterDist(p, other) >= minSafeGap(agent)) {
+      if (dragTarget.endpoint === 'A') agent.pA = p;
+      else agent.pB = p;
+    }
   });
 
   window.addEventListener('mouseup', () => {
@@ -287,7 +295,8 @@ export function createApp(seed: string) {
     if (i < agents.length) {
       const cfg = debug.agentConfig(i);
       const agent = agents[i];
-      agent.crossingTarget = cfg.crossing ? 1 : 0;
+      agent.crossed = cfg.crossed;
+      agent.crossPoint = cfg.crossPoint;
       agent.animate = cfg.animate;
 
       // Apply drift speed
@@ -295,20 +304,11 @@ export function createApp(seed: string) {
       agent.driftA = sign(agent.driftA || 1) * cfg.driftSpeed;
       agent.driftB = sign(agent.driftB || -1) * cfg.driftSpeed;
 
-      // Apply width and weights
-      agent.endA.width = cfg.widthA;
-      agent.endB.width = cfg.widthB;
-      agent.endA.weights = [...cfg.weightsA];
-      agent.endB.weights = [...cfg.weightsB];
-
-      // Update line count if changed
-      if (agent.lineCount !== cfg.lineCount) {
-        agent.lineCount = cfg.lineCount;
-        setLineCount(views[i], agentLayer, cfg.lineCount);
-      }
-
-      // Always recompute targets when config changes (weights may have changed)
-      recomputeTargets(agent);
+      // Apply edge widths
+      agent.edge1A = cfg.edge1A;
+      agent.edge1B = cfg.edge1B;
+      agent.edge2A = cfg.edge2A;
+      agent.edge2B = cfg.edge2B;
     }
   });
 
@@ -316,7 +316,9 @@ export function createApp(seed: string) {
     setAgentCount(count);
     rebuildHandles();
     for (let i = 0; i < agents.length; i++) {
-      agents[i].crossingTarget = debug!.agentConfig(i).crossing ? 1 : 0;
+      const cfg = debug!.agentConfig(i);
+      agents[i].crossed = cfg.crossed;
+      agents[i].crossPoint = cfg.crossPoint;
     }
   });
 
@@ -334,23 +336,13 @@ export function createApp(seed: string) {
       const flowSample = flow.sample(midX / vp.w, midY / vp.h, time);
 
       updateCurve(agent, dt);
-      const lc = view.lineCount;
       const paths = buildPath(agent, flowSample, debug?.flowEffects);
 
-      // Single line: no fill, just the curve
-      if (lc === 1) {
-        view.fill.setAttribute('d', '');
-        view.fill.setAttribute('display', 'none');
-      } else {
-        view.fill.removeAttribute('display');
-        view.fill.setAttribute('d', paths.fill);
-      }
-
+      view.fill.setAttribute('d', paths.fill);
       for (let li = 0; li < view.lines.length && li < paths.lines.length; li++) {
         view.lines[li].setAttribute('d', paths.lines[li]);
+        view.lines[li].setAttribute('stroke-width', String(paths.strokeWidths[li].toFixed(1)));
       }
-
-
     }
 
     debug?.set('time', time.toFixed(1) + 's');

@@ -39,11 +39,15 @@ function applyToTarget(
       break;
     }
     case 'spread': {
-      // Magnitude modulates end widths; angle biases A vs B
+      // Magnitude modulates edge widths; angle biases A vs B
       const delta = vec.magnitude * strength * 0.001 * dt;
       const bias = Math.cos(vec.angle);
-      agent.endA.width += delta * (1 + bias) * 0.5;
-      agent.endB.width += delta * (1 - bias) * 0.5;
+      const dA = delta * (1 + bias) * 0.5;
+      const dB = delta * (1 - bias) * 0.5;
+      agent.edge1A += dA;
+      agent.edge2A += dA;
+      agent.edge1B += dB;
+      agent.edge2B += dB;
       break;
     }
     case 'curvature': {
@@ -54,11 +58,7 @@ function applyToTarget(
     case 'crossing': {
       // High magnitude pushes toward crossed state
       const crossPush = vec.magnitude * strength;
-      if (crossPush > 0.5) {
-        agent.crossingTarget = 1;
-      } else if (crossPush < 0.2) {
-        agent.crossingTarget = 0;
-      }
+      agent.crossed = crossPush > 0.5;
       break;
     }
   }

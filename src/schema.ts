@@ -55,44 +55,28 @@ export const FlowInteractionSchema = z.object({
 });
 export type FlowInteraction = z.infer<typeof FlowInteractionSchema>;
 
-// ── Stroke end: defines the width and line distribution at one end ──
-
-export const StrokeEndSchema = z.object({
-  width: z.number().min(0),           // viewport-scaled perimeter fraction
-  weights: z.array(z.number().min(0)), // relative spacing per line (like CSS fr)
-});
-export type StrokeEnd = z.infer<typeof StrokeEndSchema>;
-
-// ── Line position: animated position within the end width ──
-
-export const LinePosSchema = z.object({
-  tA: z.number(), // 0..1 position within A-end width
-  tB: z.number(), // 0..1 position within B-end width
-});
-export type LinePos = z.infer<typeof LinePosSchema>;
-
 // ── Stroke agent ──
+// Each stroke has 2 edges. Each edge has independent width at the A and B ends.
 
 export const StrokeAgentSchema = z.object({
   pA: z.number(),       // center perimeter position at A
   pB: z.number(),       // center perimeter position at B
-  endA: StrokeEndSchema,
-  endB: StrokeEndSchema,
-  lineCount: z.number().int().min(1).max(5),
+  // Per-edge widths (perimeter fraction offsets from center)
+  edge1A: z.number().min(0), // edge 1 offset at A end
+  edge1B: z.number().min(0), // edge 1 offset at B end
+  edge2A: z.number().min(0), // edge 2 offset at A end
+  edge2B: z.number().min(0), // edge 2 offset at B end
   // Animation state
   driftA: z.number(),
   driftB: z.number(),
-  animate: z.boolean(), // whether drift/oscillation are active
-  // Per-line animated positions and targets
-  linePositions: z.array(LinePosSchema),
-  lineTargets: z.array(LinePosSchema),
+  animate: z.boolean(), // whether drift is active
   // Crossing
-  crossingT: z.number().min(0).max(1),
-  crossingTarget: z.number(),
+  crossed: z.boolean(),
+  crossPoint: z.number().min(0).max(1), // where along A→B the cross occurs
 });
 export type StrokeAgent = z.infer<typeof StrokeAgentSchema>;
 
-// Keep CurveAgent as alias for backward compat during migration
+// Keep CurveAgent as alias for backward compat
 export type CurveAgent = StrokeAgent;
 
 // ── Defaults ──
@@ -106,32 +90,3 @@ export const DEFAULT_INTERACTIONS: FlowInteraction[] = [
 
 export const FLOW_COMPONENTS = FlowComponentSchema.options;
 export const STROKE_TARGETS = StrokeTargetSchema.options;
-
-// ── Helpers ──
-
-/** Compute target positions (0..1) from gap weights.
- *  Lines sit edge-to-edge: first at 0, last at 1.
- *  Weights define relative gap sizes between adjacent lines.
- *  - 1 line: [0.5] (centered)
- *  - 2 lines: [0, 1] (edges, no gaps to weight)
- *  - 3+ lines: first=0, last=1, intermediates distributed by gap weights
- *
- *  gapWeights length should be lineCount - 1 (one weight per gap). */
-export function weightsToPositions(lineCount: number, gapWeights: number[]): number[] {
-  if (lineCount <= 1) return [0.5];
-  if (lineCount === 2) return [0, 1];
-
-  const gaps = gapWeights.slice(0, lineCount - 1);
-  // Pad if not enough weights
-  while (gaps.length < lineCount - 1) gaps.push(1);
-
-  const total = gaps.reduce((a, b) => a + b, 0) || 1;
-  const positions = [0];
-  let cumulative = 0;
-  for (let i = 0; i < gaps.length - 1; i++) {
-    cumulative += gaps[i];
-    positions.push(cumulative / total);
-  }
-  positions.push(1);
-  return positions;
-}

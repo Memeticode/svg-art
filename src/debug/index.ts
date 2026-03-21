@@ -1,7 +1,7 @@
 // Debug panel: toggled via Ctrl+Shift+D when enabled by markup.
 
 import type { FlowComponent, FlowEffects } from '../schema';
-import { DEFAULT_FLOW_EFFECTS, weightsToPositions } from '../schema';
+import { DEFAULT_FLOW_EFFECTS } from '../schema';
 
 const PANEL_WIDTH = 280;
 const STORAGE_KEY = 'svg-art-debug';
@@ -13,7 +13,6 @@ class ConfigHistory<T> {
   private index = -1;
 
   push(state: T) {
-    // Discard any redo states
     this.stack = this.stack.slice(0, this.index + 1);
     this.stack.push(JSON.parse(JSON.stringify(state)));
     if (this.stack.length > MAX_HISTORY) this.stack.shift();
@@ -38,23 +37,23 @@ class ConfigHistory<T> {
 
 export interface AgentConfig {
   overrideGlobals: boolean;
-  crossing: boolean;
-  lineCount: number;
-  widthA: number;
-  widthB: number;
-  weightsA: number[];
-  weightsB: number[];
+  crossed: boolean;
+  crossPoint: number;
+  edge1A: number;
+  edge1B: number;
+  edge2A: number;
+  edge2B: number;
   driftSpeed: number;
   animate: boolean;
 }
 
 export interface ResolvedConfig {
-  crossing: boolean;
-  lineCount: number;
-  widthA: number;
-  widthB: number;
-  weightsA: number[];
-  weightsB: number[];
+  crossed: boolean;
+  crossPoint: number;
+  edge1A: number;
+  edge1B: number;
+  edge2A: number;
+  edge2B: number;
   driftSpeed: number;
   animate: boolean;
 }
@@ -86,12 +85,12 @@ export function initDebug(): DebugHandle | null {
   // ── Persistence ──
   interface PersistedState {
     debugVisible: boolean;
-    globalCrossing: boolean;
-    globalLineCount: number;
-    globalWidthA: number;
-    globalWidthB: number;
-    globalWeightsA?: number[];
-    globalWeightsB?: number[];
+    globalCrossed: boolean;
+    globalCrossPoint: number;
+    globalEdge1A: number;
+    globalEdge1B: number;
+    globalEdge2A: number;
+    globalEdge2B: number;
     globalDriftSpeed: number;
     globalAnimate: boolean;
     agentCount: number;
@@ -100,10 +99,12 @@ export function initDebug(): DebugHandle | null {
 
   const DEFAULTS: PersistedState = {
     debugVisible: false,
-    globalCrossing: false,
-    globalLineCount: 1,
-    globalWidthA: 0.01,
-    globalWidthB: 0.01,
+    globalCrossed: false,
+    globalCrossPoint: 0.5,
+    globalEdge1A: 0.01,
+    globalEdge1B: 0.01,
+    globalEdge2A: 0.01,
+    globalEdge2B: 0.01,
     globalDriftSpeed: 0,
     globalAnimate: false,
     agentCount: 1,
@@ -121,12 +122,12 @@ export function initDebug(): DebugHandle | null {
   function saveState() {
     const state: PersistedState = {
       debugVisible: visible,
-      globalCrossing,
-      globalLineCount,
-      globalWidthA,
-      globalWidthB,
-      globalWeightsA,
-      globalWeightsB,
+      globalCrossed,
+      globalCrossPoint,
+      globalEdge1A,
+      globalEdge1B,
+      globalEdge2A,
+      globalEdge2B,
       globalDriftSpeed,
       globalAnimate,
       agentCount: currentAgentCount,
@@ -145,32 +146,34 @@ export function initDebug(): DebugHandle | null {
   const flowEffects: FlowEffects = { ...saved.flowEffects };
 
   // Global defaults
-  let globalCrossing = saved.globalCrossing;
-  let globalLineCount = saved.globalLineCount ?? 1;
-  let globalWidthA = saved.globalWidthA ?? 0.01;
-  let globalWidthB = saved.globalWidthB ?? 0.01;
-  let globalWeightsA = saved.globalWeightsA ?? [];
-  let globalWeightsB = saved.globalWeightsB ?? [];
+  let globalCrossed = saved.globalCrossed;
+  let globalCrossPoint = saved.globalCrossPoint ?? 0.5;
+  let globalEdge1A = saved.globalEdge1A ?? 0.01;
+  let globalEdge1B = saved.globalEdge1B ?? 0.01;
+  let globalEdge2A = saved.globalEdge2A ?? 0.01;
+  let globalEdge2B = saved.globalEdge2B ?? 0.01;
   let globalDriftSpeed = saved.globalDriftSpeed ?? 0;
   let globalAnimate = saved.globalAnimate ?? false;
 
   // Undo/redo history
   interface GlobalSnapshot {
-    crossing: boolean; lineCount: number; widthA: number; widthB: number;
-    weightsA: number[]; weightsB: number[]; driftSpeed: number; animate: boolean;
+    crossed: boolean; crossPoint: number;
+    edge1A: number; edge1B: number; edge2A: number; edge2B: number;
+    driftSpeed: number; animate: boolean;
   }
   const globalHistory = new ConfigHistory<GlobalSnapshot>();
   const strokeHistories: ConfigHistory<AgentConfig>[] = [];
 
   function snapshotGlobal(): GlobalSnapshot {
-    return { crossing: globalCrossing, lineCount: globalLineCount, widthA: globalWidthA, widthB: globalWidthB,
-      weightsA: [...globalWeightsA], weightsB: [...globalWeightsB], driftSpeed: globalDriftSpeed, animate: globalAnimate };
+    return { crossed: globalCrossed, crossPoint: globalCrossPoint,
+      edge1A: globalEdge1A, edge1B: globalEdge1B, edge2A: globalEdge2A, edge2B: globalEdge2B,
+      driftSpeed: globalDriftSpeed, animate: globalAnimate };
   }
 
   function applyGlobalSnapshot(s: GlobalSnapshot) {
-    globalCrossing = s.crossing; globalLineCount = s.lineCount;
-    globalWidthA = s.widthA; globalWidthB = s.widthB;
-    globalWeightsA = [...s.weightsA]; globalWeightsB = [...s.weightsB];
+    globalCrossed = s.crossed; globalCrossPoint = s.crossPoint;
+    globalEdge1A = s.edge1A; globalEdge1B = s.edge1B;
+    globalEdge2A = s.edge2A; globalEdge2B = s.edge2B;
     globalDriftSpeed = s.driftSpeed; globalAnimate = s.animate;
     saveState(); notifyAllAgents();
   }
@@ -187,7 +190,9 @@ export function initDebug(): DebugHandle | null {
   const seekListeners: Array<(t: number) => void> = [];
 
   function makeAgentConfig(): AgentConfig {
-    return { overrideGlobals: false, crossing: false, lineCount: 1, widthA: 0.01, widthB: 0.01, weightsA: [], weightsB: [], driftSpeed: 0, animate: false };
+    return { overrideGlobals: false, crossed: false, crossPoint: 0.5,
+      edge1A: 0.01, edge1B: 0.01, edge2A: 0.01, edge2B: 0.01,
+      driftSpeed: 0, animate: false };
   }
   agents.push(makeAgentConfig());
 
@@ -201,7 +206,6 @@ export function initDebug(): DebugHandle | null {
     overflow-y:auto; display:${visible ? '' : 'none'};
   `;
 
-
   const sliderHTML = (id: string, label: string, min: string, max: string, step: string, value: string) => `
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;font-size:12px;">
       <span style="min-width:70px;">${label}:</span>
@@ -211,75 +215,16 @@ export function initDebug(): DebugHandle | null {
     </div>
   `;
 
-  const numberInputHTML = (id: string, label: string, min: number, max: number, value: number) => `
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12px;">
-      <span>${label}:</span>
-      <input id="${id}" type="number" min="${min}" max="${max}" value="${value}"
-        style="width:40px;background:#0a0a0f;color:#e2e8f0;border:1px solid #2dd4bf33;border-radius:3px;padding:2px 4px;font:12px monospace;text-align:center;" />
-    </div>
-  `;
-
-  const LINE_COLORS = ['#ef4444', '#3b82f6', '#2dd4bf', '#f59e0b', '#a78bfa'];
-
-  // Mini stroke preview: SVG widget showing lines between two ends
-  const lineArrangementHTML = (prefix: string, lineCount: number) => {
-    if (lineCount <= 1) {
-      return `<div style="font-size:11px;color:#64748b;margin-bottom:4px;">single line — no arrangement needed</div>`;
-    }
-
-    const numGaps = lineCount - 1;
-    // Gap buttons for each end
-    const gapBtns = (end: string) => {
-      let html = '';
-      for (let g = 0; g < numGaps; g++) {
-        html += `<button id="${prefix}-g${end}${g}" title="gap ${g + 1}" style="
-          width:20px;height:16px;border-radius:3px;font:9px monospace;
-          background:#2dd4bf11;color:#2dd4bf88;border:1px solid #2dd4bf33;
-          cursor:pointer;padding:0;margin:0 1px;
-        ">1</button>`;
-      }
-      return html;
-    };
-
-    // SVG mini-preview dimensions
-    const svgW = 220, svgH = 60;
-    const endX1 = 20, endX2 = svgW - 20;
-    const topY = 8, botY = svgH - 8;
-
-    return `
-      <div style="border:1px solid #2dd4bf22;border-radius:6px;padding:8px;margin-bottom:8px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;font-size:11px;">
-          <span style="color:#2dd4bf99;">line arrangement</span>
-          <span style="color:#64748b;">${lineCount} lines, ${numGaps} gaps</span>
-        </div>
-        <svg id="${prefix}-preview" width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}"
-          style="display:block;background:#0a0a0f;border-radius:4px;margin-bottom:6px;">
-          <!-- End bars -->
-          <line x1="${endX1}" y1="${topY}" x2="${endX1}" y2="${botY}" stroke="#2dd4bf44" stroke-width="2" />
-          <line x1="${endX2}" y1="${topY}" x2="${endX2}" y2="${botY}" stroke="#2dd4bf44" stroke-width="2" />
-          <text x="${endX1}" y="${svgH - 1}" text-anchor="middle" fill="#2dd4bf66" font-size="8" font-family="monospace">A</text>
-          <text x="${endX2}" y="${svgH - 1}" text-anchor="middle" fill="#2dd4bf66" font-size="8" font-family="monospace">B</text>
-          <!-- Lines will be drawn by JS -->
-        </svg>
-        <div style="display:flex;align-items:center;gap:4px;font-size:10px;">
-          <span style="color:#94a3b8;min-width:16px;">A</span>
-          <div style="display:flex;">${gapBtns('A')}</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:4px;font-size:10px;margin-top:2px;">
-          <span style="color:#94a3b8;min-width:16px;">B</span>
-          <div style="display:flex;">${gapBtns('B')}</div>
-        </div>
-      </div>
-    `;
-  };
-
-  const controlsHTML = (prefix: string, lineCount = 1) => `
-    ${numberInputHTML(prefix + '-lines', 'lines', 1, 5, lineCount)}
-    ${sliderHTML(prefix + '-widthA', 'width A', '0', '50', '1', '10')}
-    ${sliderHTML(prefix + '-widthB', 'width B', '0', '50', '1', '10')}
-    <div id="${prefix}-arrangement">${lineArrangementHTML(prefix, lineCount)}</div>
+  const controlsHTML = (prefix: string) => `
+    <div style="color:#94a3b8;font-size:11px;margin-bottom:2px;margin-top:4px;">edge 1 (red)</div>
+    ${sliderHTML(prefix + '-e1a', 'A side', '0', '50', '1', '10')}
+    ${sliderHTML(prefix + '-e1b', 'B side', '0', '50', '1', '10')}
+    <div style="color:#94a3b8;font-size:11px;margin-bottom:2px;margin-top:4px;">edge 2 (blue)</div>
+    ${sliderHTML(prefix + '-e2a', 'A side', '0', '50', '1', '10')}
+    ${sliderHTML(prefix + '-e2b', 'B side', '0', '50', '1', '10')}
+    ${sliderHTML(prefix + '-crosspoint', 'cross pos', '0', '100', '1', '50')}
     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:6px;">
-      <input type="checkbox" id="${prefix}-crossing" style="accent-color:#2dd4bf;" />
+      <input type="checkbox" id="${prefix}-crossed" style="accent-color:#2dd4bf;" />
       <span>crossed</span>
     </label>
     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:6px;">
@@ -363,13 +308,13 @@ export function initDebug(): DebugHandle | null {
         </div>
       </div>
       <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-        <span>agents:</span>
+        <span>strokes:</span>
         <input id="dbg-agent-count" type="number" min="1" max="5" value="${currentAgentCount}" style="width:40px;background:#0a0a0f;color:#e2e8f0;border:1px solid #2dd4bf33;border-radius:3px;padding:2px 4px;font:12px monospace;text-align:center;" />
       </div>
       ${controlsHTML('dbg-g')}
     </div>
 
-    <!-- Dynamic agent sections -->
+    <!-- Dynamic stroke sections -->
     <div id="dbg-agents-container"></div>
 
     <!-- Reset -->
@@ -422,7 +367,7 @@ export function initDebug(): DebugHandle | null {
     (document.getElementById(`dbg-fc-${fc}`) as HTMLInputElement).addEventListener('change', function () {
       if (this.checked) activeFlowComponents.add(fc);
       else activeFlowComponents.delete(fc);
-      if (showFlow) for (const cb of flowListeners) cb(true); // re-render
+      if (showFlow) for (const cb of flowListeners) cb(true);
     });
   }
 
@@ -456,77 +401,16 @@ export function initDebug(): DebugHandle | null {
     if (!isNaN(t) && t >= 0) { for (const cb of seekListeners) cb(t); }
   });
 
-
-  // Wire arrangement: SVG mini-preview + gap weight buttons
-  function wireArrangement(prefix: string, lineCount: number, getWeights: () => { a: number[]; b: number[] }, onChange: () => void) {
-    if (lineCount <= 1) return;
-
-    const svgW = 220, endX1 = 20, endX2 = svgW - 20;
-    const topY = 8, botY = 52;
-    const numGaps = lineCount - 1;
-
-    function renderPreview() {
-      const svg = document.getElementById(`${prefix}-preview`);
-      if (!svg) return;
-
-      // Remove old lines (keep the first 3 elements: 2 end bars + 2 text labels)
-      const children = Array.from(svg.children);
-      for (let i = children.length - 1; i >= 4; i--) {
-        children[i].remove();
-      }
-
-      const w = getWeights();
-      const posA = weightsToPositions(lineCount, w.a);
-      const posB = weightsToPositions(lineCount, w.b);
-
-      for (let i = 0; i < lineCount; i++) {
-        const y1 = topY + posA[i] * (botY - topY);
-        const y2 = topY + posB[i] * (botY - topY);
-        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        line.setAttribute('x1', String(endX1));
-        line.setAttribute('y1', y1.toFixed(1));
-        line.setAttribute('x2', String(endX2));
-        line.setAttribute('y2', y2.toFixed(1));
-        line.setAttribute('stroke', LINE_COLORS[i % LINE_COLORS.length]);
-        line.setAttribute('stroke-width', '1.5');
-        line.setAttribute('stroke-opacity', '0.8');
-        svg.appendChild(line);
-
-        // Dots at endpoints
-        for (const [cx, cy] of [[endX1, y1], [endX2, y2]]) {
-          const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-          dot.setAttribute('cx', String(cx));
-          dot.setAttribute('cy', cy.toFixed(1));
-          dot.setAttribute('r', '3');
-          dot.setAttribute('fill', LINE_COLORS[i % LINE_COLORS.length]);
-          dot.setAttribute('fill-opacity', '0.8');
-          svg.appendChild(dot);
-        }
-      }
-    }
-
-    // Wire gap buttons
-    for (const end of ['A', 'B'] as const) {
-      for (let g = 0; g < numGaps; g++) {
-        const btn = document.getElementById(`${prefix}-g${end}${g}`);
-        if (!btn) continue;
-        // Set initial value
-        const w = getWeights();
-        const arr = end === 'A' ? w.a : w.b;
-        btn.textContent = String(arr[g] ?? 1);
-
-        btn.addEventListener('click', () => {
-          const w2 = getWeights();
-          const arr2 = end === 'A' ? w2.a : w2.b;
-          arr2[g] = (arr2[g] % 3) + 1;
-          btn.textContent = String(arr2[g]);
-          renderPreview();
-          onChange();
-        });
-      }
-    }
-
-    renderPreview();
+  // Helper: wire a single slider with value display
+  function wireSingleSlider(id: string, onChange: (v: number) => void) {
+    const slider = document.getElementById(id) as HTMLInputElement;
+    const valEl = document.getElementById(`${id}-val`)!;
+    if (!slider || !valEl) return;
+    slider.addEventListener('input', () => {
+      const v = parseFloat(slider.value);
+      valEl.textContent = v.toFixed(1);
+      onChange(v);
+    });
   }
 
   function notifyAllAgents() {
@@ -535,63 +419,40 @@ export function initDebug(): DebugHandle | null {
     }
   }
 
-  // Global crossing
-  (document.getElementById('dbg-g-crossing') as HTMLInputElement).addEventListener('change', function () {
-    globalCrossing = this.checked;
-    saveState();
-    notifyAllAgents();
-  });
-
-  // Helper: wire a single slider with value display
-  function wireSingleSlider(id: string, onChange: (v: number) => void) {
-    const slider = document.getElementById(id) as HTMLInputElement;
-    const valEl = document.getElementById(`${id}-val`)!;
-    slider.addEventListener('input', () => {
-      const v = parseFloat(slider.value);
-      valEl.textContent = v.toFixed(1);
-      onChange(v);
-    });
+  // Wire edge width sliders for a given prefix
+  function wireEdgeSliders(prefix: string, setEdge: (key: 'edge1A' | 'edge1B' | 'edge2A' | 'edge2B', v: number) => void, onChange: () => void) {
+    wireSingleSlider(`${prefix}-e1a`, (v) => { setEdge('edge1A', v * 0.001); onChange(); });
+    wireSingleSlider(`${prefix}-e1b`, (v) => { setEdge('edge1B', v * 0.001); onChange(); });
+    wireSingleSlider(`${prefix}-e2a`, (v) => { setEdge('edge2A', v * 0.001); onChange(); });
+    wireSingleSlider(`${prefix}-e2b`, (v) => { setEdge('edge2B', v * 0.001); onChange(); });
   }
 
-  // Global: line count (first instance, wired from controlsHTML)
-  wireNumberInput('dbg-g-lines', (n) => {
-    globalLineCount = n;
-    // Resize weight arrays
-    const numGaps = Math.max(0, n - 1);
-    while (globalWeightsA.length < numGaps) globalWeightsA.push(1);
-    while (globalWeightsA.length > numGaps) globalWeightsA.pop();
-    while (globalWeightsB.length < numGaps) globalWeightsB.push(1);
-    while (globalWeightsB.length > numGaps) globalWeightsB.pop();
-    // Rebuild arrangement widget
-    const container = document.getElementById('dbg-g-arrangement');
-    if (container) {
-      container.innerHTML = lineArrangementHTML('dbg-g', n);
-      wireArrangement('dbg-g', n,
-        () => ({ a: globalWeightsA, b: globalWeightsB }),
-        () => { saveState(); notifyAllAgents(); },
-      );
-    }
-    saveState();
-    notifyAllAgents();
-  });
-
-  // Global: width A/B (slider 0-50 maps to 0-0.05 perimeter fraction)
-  wireSingleSlider('dbg-g-widthA', (v) => {
-    globalWidthA = v * 0.001;
-    saveState();
-    notifyAllAgents();
-  });
-  wireSingleSlider('dbg-g-widthB', (v) => {
-    globalWidthB = v * 0.001;
-    saveState();
-    notifyAllAgents();
-  });
-
-  // Global: wire initial arrangement widget
-  wireArrangement('dbg-g', globalLineCount,
-    () => ({ a: globalWeightsA, b: globalWeightsB }),
+  // Global: edge widths
+  wireEdgeSliders('dbg-g',
+    (key, v) => {
+      if (key === 'edge1A') globalEdge1A = v;
+      else if (key === 'edge1B') globalEdge1B = v;
+      else if (key === 'edge2A') globalEdge2A = v;
+      else globalEdge2B = v;
+    },
     () => { saveState(); notifyAllAgents(); },
   );
+
+  // Global: crossPoint (always visible)
+  wireSingleSlider('dbg-g-crosspoint', (v) => {
+    globalCrossPoint = v / 100;
+    saveState();
+    notifyAllAgents();
+  });
+
+  // Global: crossed checkbox
+  const gCrossedEl = document.getElementById('dbg-g-crossed') as HTMLInputElement;
+  gCrossedEl.checked = globalCrossed;
+  gCrossedEl.addEventListener('change', () => {
+    globalCrossed = gCrossedEl.checked;
+    saveState();
+    notifyAllAgents();
+  });
 
   // Global: animate toggle
   const gAnimCheckbox = document.getElementById('dbg-g-animate') as HTMLInputElement;
@@ -624,7 +485,7 @@ export function initDebug(): DebugHandle | null {
   // Push initial global state
   pushGlobalHistory();
 
-  // Agent count
+  // Stroke count
   const agentCountInput = document.getElementById('dbg-agent-count') as HTMLInputElement;
   agentCountInput.addEventListener('change', () => {
     const n = Math.max(1, Math.min(5, parseInt(agentCountInput.value) || 1));
@@ -635,23 +496,10 @@ export function initDebug(): DebugHandle | null {
     for (const cb of countListeners) cb(n);
   });
 
-  // Helper: wire a number input
-  function wireNumberInput(id: string, onChange: (v: number) => void, min = 1, max = 5, fallback = 2) {
-    const el = document.getElementById(id) as HTMLInputElement;
-    if (!el) return;
-    el.addEventListener('change', () => {
-      const n = Math.max(min, Math.min(max, parseInt(el.value) || fallback));
-      el.value = String(n);
-      onChange(n);
-    });
-  }
-
-
-  // Dynamic agent sections
+  // Dynamic stroke sections
   const agentsContainer = document.getElementById('dbg-agents-container')!;
 
   function rebuildAgentSections() {
-    // Ensure agents array has enough entries
     while (agents.length < currentAgentCount) agents.push(makeAgentConfig());
 
     agentsContainer.innerHTML = '';
@@ -686,46 +534,23 @@ export function initDebug(): DebugHandle | null {
         for (const cb of agentListeners) cb(i);
       });
 
-      // Wire per-agent controls
-      wireNumberInput(`${id}-lines`, (n) => {
-        agents[i].lineCount = n;
-        const ng = Math.max(0, n - 1);
-        while (agents[i].weightsA.length < ng) agents[i].weightsA.push(1);
-        while (agents[i].weightsA.length > ng) agents[i].weightsA.pop();
-        while (agents[i].weightsB.length < ng) agents[i].weightsB.push(1);
-        while (agents[i].weightsB.length > ng) agents[i].weightsB.pop();
-        // Rebuild arrangement
-        const container = document.getElementById(`${id}-arrangement`);
-        if (container) {
-          container.innerHTML = lineArrangementHTML(id, n);
-          wireArrangement(id, n,
-            () => ({ a: agents[i].weightsA, b: agents[i].weightsB }),
-            () => { if (agents[i].overrideGlobals) for (const cb of agentListeners) cb(i); },
-          );
-        }
-        if (agents[i].overrideGlobals) for (const cb of agentListeners) cb(i);
-      });
-
-      // Wire initial arrangement for this agent
-      wireArrangement(id, agents[i].lineCount,
-        () => ({ a: agents[i].weightsA, b: agents[i].weightsB }),
+      // Wire per-agent edge sliders
+      wireEdgeSliders(id,
+        (key, v) => { agents[i][key] = v; },
         () => { if (agents[i].overrideGlobals) for (const cb of agentListeners) cb(i); },
       );
 
-      wireSingleSlider(`${id}-widthA`, (v) => {
-        agents[i].widthA = v * 0.001;
+      // Wire per-agent crossPoint
+      wireSingleSlider(`${id}-crosspoint`, (v) => {
+        agents[i].crossPoint = v / 100;
         if (agents[i].overrideGlobals) for (const cb of agentListeners) cb(i);
       });
 
-      wireSingleSlider(`${id}-widthB`, (v) => {
-        agents[i].widthB = v * 0.001;
-        if (agents[i].overrideGlobals) for (const cb of agentListeners) cb(i);
-      });
-
-      const crossEl = document.getElementById(`${id}-crossing`) as HTMLInputElement;
-      if (agents[i].crossing) crossEl.checked = true;
-      crossEl.addEventListener('change', () => {
-        agents[i].crossing = crossEl.checked;
+      // Wire per-agent crossed
+      const crossedEl = document.getElementById(`${id}-crossed`) as HTMLInputElement;
+      if (agents[i].crossed) crossedEl.checked = true;
+      crossedEl.addEventListener('change', () => {
+        agents[i].crossed = crossedEl.checked;
         if (agents[i].overrideGlobals) for (const cb of agentListeners) cb(i);
       });
 
@@ -744,19 +569,19 @@ export function initDebug(): DebugHandle | null {
 
       // Stroke undo/redo
       while (strokeHistories.length <= i) strokeHistories.push(new ConfigHistory<AgentConfig>());
-      strokeHistories[i].push({ ...agents[i], weightsA: [...agents[i].weightsA], weightsB: [...agents[i].weightsB] });
+      strokeHistories[i].push({ ...agents[i] });
 
       document.getElementById(`${id}-undo`)?.addEventListener('click', () => {
         const s = strokeHistories[i]?.undo();
         if (s) {
-          agents[i] = { ...s, weightsA: [...s.weightsA], weightsB: [...s.weightsB] };
+          agents[i] = { ...s };
           for (const cb of agentListeners) cb(i);
         }
       });
       document.getElementById(`${id}-redo`)?.addEventListener('click', () => {
         const s = strokeHistories[i]?.redo();
         if (s) {
-          agents[i] = { ...s, weightsA: [...s.weightsA], weightsB: [...s.weightsB] };
+          agents[i] = { ...s };
           for (const cb of agentListeners) cb(i);
         }
       });
@@ -797,16 +622,16 @@ export function initDebug(): DebugHandle | null {
       const a = agents[index];
       if (a?.overrideGlobals) {
         return {
-          crossing: a.crossing, lineCount: a.lineCount,
-          widthA: a.widthA, widthB: a.widthB,
-          weightsA: [...a.weightsA], weightsB: [...a.weightsB],
+          crossed: a.crossed, crossPoint: a.crossPoint,
+          edge1A: a.edge1A, edge1B: a.edge1B,
+          edge2A: a.edge2A, edge2B: a.edge2B,
           driftSpeed: a.driftSpeed, animate: a.animate,
         };
       }
       return {
-        crossing: globalCrossing, lineCount: globalLineCount,
-        widthA: globalWidthA, widthB: globalWidthB,
-        weightsA: [...globalWeightsA], weightsB: [...globalWeightsB],
+        crossed: globalCrossed, crossPoint: globalCrossPoint,
+        edge1A: globalEdge1A, edge1B: globalEdge1B,
+        edge2A: globalEdge2A, edge2B: globalEdge2B,
         driftSpeed: globalDriftSpeed, animate: globalAnimate,
       };
     },

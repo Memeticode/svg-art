@@ -1,113 +1,83 @@
 // Stroke agent: state management and SVG path building.
-// Each agent has two ends (A, B) with configurable width and line distribution.
+// Each agent is a ribbon of exactly 2 lines connecting two perimeter points.
 
 import type { Rng } from './rng';
 import type { FlowSample, StrokeAgent, FlowEffects } from './schema';
-import { DEFAULT_FLOW_EFFECTS, weightsToPositions } from './schema';
+import { DEFAULT_FLOW_EFFECTS } from './schema';
 import { vp, getPerimeter, perimeterToXY, borderTrace, nearestCorner } from './viewport';
 
 export const DEFAULT_SPREAD_RATIO = 0.02;
-export const DEFAULT_SPREAD_MIN_RATIO = 0.001;
-
-const TRANSITION_SPEED = 4; // positions per second for line transitions
 
 // ── Agent lifecycle ──
 
-export function createStroke(rng: Rng, lineCount = 1): StrokeAgent {
+export function createStroke(rng: Rng): StrokeAgent {
   const P = getPerimeter();
   const defaultWidth = DEFAULT_SPREAD_RATIO * Math.min(vp.w, vp.h) / P;
   const pA = rng.float(0, 1);
   const pB = (pA + rng.float(0.25, 0.75)) % 1;
 
-  const numGaps = Math.max(0, lineCount - 1);
-  const gapWeights = Array.from({ length: numGaps }, () => 1);
-  const targets = weightsToPositions(lineCount, gapWeights).map(t => ({ tA: t, tB: t }));
-
   return {
     pA, pB,
-    endA: { width: defaultWidth, weights: [...gapWeights] },
-    endB: { width: defaultWidth, weights: [...gapWeights] },
-    lineCount,
+    edge1A: defaultWidth,
+    edge1B: defaultWidth,
+    edge2A: defaultWidth,
+    edge2B: defaultWidth,
     driftA: 0,
     driftB: 0,
     animate: false,
-    linePositions: targets.map(t => ({ ...t })),
-    lineTargets: targets,
-    crossingT: 0,
-    crossingTarget: 0,
+    crossed: false,
+    crossPoint: 0.5,
   };
 }
 
 // Keep old name as alias
 export const createCurve = createStroke;
 
+/** Shortest perimeter distance between two points (0..1 wrapping). */
+export function perimeterDist(a: number, b: number): number {
+  const d = ((b - a) % 1 + 1) % 1;
+  return Math.min(d, 1 - d);
+}
+
+/** Minimum safe perimeter distance between pA and pB so edge spans don't overlap. */
+export function minSafeGap(agent: StrokeAgent): number {
+  const halfA = Math.max(agent.edge1A, agent.edge2A);
+  const halfB = Math.max(agent.edge1B, agent.edge2B);
+  return halfA + halfB + 0.005; // small buffer
+}
+
 export function updateStroke(agent: StrokeAgent, dt: number): void {
-  // Drift (only when animation is on)
-  if (agent.animate) {
-    agent.pA = ((agent.pA + agent.driftA * dt) % 1 + 1) % 1;
-    agent.pB = ((agent.pB + agent.driftB * dt) % 1 + 1) % 1;
-  }
+  if (!agent.animate) return;
 
-  // Animate line positions toward targets
-  for (let i = 0; i < agent.linePositions.length; i++) {
-    const pos = agent.linePositions[i];
-    const tgt = agent.lineTargets[i];
-    if (!tgt) continue;
-    const speed = TRANSITION_SPEED * dt;
-    pos.tA += Math.sign(tgt.tA - pos.tA) * Math.min(speed, Math.abs(tgt.tA - pos.tA));
-    pos.tB += Math.sign(tgt.tB - pos.tB) * Math.min(speed, Math.abs(tgt.tB - pos.tB));
-  }
+  const prevA = agent.pA;
+  const prevB = agent.pB;
 
-  // Crossing animation
-  const crossingSpeed = 3 * dt;
-  if (agent.crossingT < agent.crossingTarget) {
-    agent.crossingT = Math.min(agent.crossingTarget, agent.crossingT + crossingSpeed);
-  } else if (agent.crossingT > agent.crossingTarget) {
-    agent.crossingT = Math.max(agent.crossingTarget, agent.crossingT - crossingSpeed);
+  agent.pA = ((agent.pA + agent.driftA * dt) % 1 + 1) % 1;
+  agent.pB = ((agent.pB + agent.driftB * dt) % 1 + 1) % 1;
+
+  // If edges would overlap after drift, revert and reverse both drift directions
+  if (perimeterDist(agent.pA, agent.pB) < minSafeGap(agent)) {
+    agent.pA = prevA;
+    agent.pB = prevB;
+    agent.driftA = -agent.driftA;
+    agent.driftB = -agent.driftB;
   }
 }
 
 // Keep old name as alias
 export const updateCurve = updateStroke;
 
-/** Recompute line targets from current weights. Call when weights or lineCount change. */
-export function recomputeTargets(agent: StrokeAgent) {
-  // Gap weights: N-1 gaps for N lines
-  const numGaps = Math.max(0, agent.lineCount - 1);
-
-  // Sync weight arrays to gap count
-  while (agent.endA.weights.length < numGaps) agent.endA.weights.push(1);
-  while (agent.endA.weights.length > numGaps) agent.endA.weights.pop();
-  while (agent.endB.weights.length < numGaps) agent.endB.weights.push(1);
-  while (agent.endB.weights.length > numGaps) agent.endB.weights.pop();
-
-  const posA = weightsToPositions(agent.lineCount, agent.endA.weights);
-  const posB = weightsToPositions(agent.lineCount, agent.endB.weights);
-
-  // Resize position arrays
-  while (agent.linePositions.length < agent.lineCount) {
-    const i = agent.linePositions.length;
-    agent.linePositions.push({ tA: posA[i] ?? 0.5, tB: posB[i] ?? 0.5 });
-  }
-  while (agent.linePositions.length > agent.lineCount) {
-    agent.linePositions.pop();
-  }
-
-  agent.lineTargets = [];
-  for (let i = 0; i < agent.lineCount; i++) {
-    agent.lineTargets.push({ tA: posA[i] ?? 0.5, tB: posB[i] ?? 0.5 });
-  }
-}
-
 // ── Path building ──
 
 export interface RibbonPaths {
   fill: string;
   lines: string[];
+  strokeWidths: [number, number];
 }
 
 export function buildPath(agent: StrokeAgent, flow: FlowSample, effects: FlowEffects = DEFAULT_FLOW_EFFECTS): RibbonPaths {
   const W = vp.w, H = vp.h;
+  const P = getPerimeter();
 
   const aCtr = perimeterToXY(agent.pA);
   const bCtr = perimeterToXY(agent.pB);
@@ -159,75 +129,137 @@ export function buildPath(agent: StrokeAgent, flow: FlowSample, effects: FlowEff
     sc2y += (cornerB.y - sc2y) * blend;
   }
 
-  const P = getPerimeter();
-  const widthA = agent.endA.width * P;
-  const widthB = agent.endB.width * P;
+  // Per-edge offsets in perimeter units (pixels along border)
+  const e1A = agent.edge1A * P; // edge 1 offset at A (positive side)
+  const e1B = agent.edge1B * P; // edge 1 offset at B
+  const e2A = agent.edge2A * P; // edge 2 offset at A (negative side)
+  const e2B = agent.edge2B * P; // edge 2 offset at B
+
   const f = (n: number) => n.toFixed(1);
 
-  // Build per-line paths
-  const lines: string[] = [];
-  for (let i = 0; i < agent.lineCount; i++) {
-    const pos = agent.linePositions[i];
-    if (!pos) continue;
+  // Determine short-arc direction: edge1 goes inward (between A and B), edge2 goes outward
+  const cwDist = ((agent.pB - agent.pA) % 1 + 1) % 1;
+  const dir = cwDist <= 0.5 ? 1 : -1;
 
-    // Position within width: 0..1 mapped to -0.5..+0.5 offset
-    const offsetA = (pos.tA - 0.5) * widthA;
-    const offsetB = (pos.tB - 0.5) * widthB;
+  let e1OffA = dir * e1A;
+  let e2OffA = -dir * e2A;
+  let e1OffB = agent.crossed ? dir * e1B : -dir * e1B;
+  let e2OffB = agent.crossed ? -dir * e2B : dir * e2B;
 
-    // Start and end points: offset from center along perimeter
-    const sP = agent.pA + offsetA / P;
-    const eP = agent.pB + offsetB / P;
+  // When crossed, converge edges near the cross point
+  if (agent.crossed) {
+    const cp = agent.crossPoint;
+    e1OffA *= cp;
+    e2OffA *= cp;
+    e1OffB *= (1 - cp);
+    e2OffB *= (1 - cp);
+  }
+
+  function buildLine(offA: number, offB: number): string {
+    const sP = agent.pA + offA / P;
+    const eP = agent.pB + offB / P;
     const s = perimeterToXY(sP);
     const e = perimeterToXY(eP);
 
-    // Control points: offset from spine proportionally
-    const hw1 = offsetA * 0.67 + offsetB * 0.33;
-    const hw2 = offsetA * 0.33 + offsetB * 0.67;
-    const c1x = cl(sc1x + px * hw1, 0, W);
-    const c1y = cl(sc1y + py * hw1, 0, H);
-    const c2x = cl(sc2x + px * hw2, 0, W);
-    const c2y = cl(sc2y + py * hw2, 0, H);
+    // Displacement vectors from spine endpoints to edge endpoints
+    const dxA = s.x - aCtr.x, dyA = s.y - aCtr.y;
+    const dxB = e.x - bCtr.x, dyB = e.y - bCtr.y;
 
-    lines.push(`M${f(s.x)} ${f(s.y)} C${f(c1x)} ${f(c1y)} ${f(c2x)} ${f(c2y)} ${f(e.x)} ${f(e.y)}`);
-  }
+    if (!agent.crossed) {
+      // Interpolate displacements for control points
+      const d1x = dxA * 0.67 + dxB * 0.33;
+      const d1y = dyA * 0.67 + dyB * 0.33;
+      const d2x = dxA * 0.33 + dxB * 0.67;
+      const d2y = dyA * 0.33 + dyB * 0.67;
+      const c1x = cl(sc1x + d1x, 0, W);
+      const c1y = cl(sc1y + d1y, 0, H);
+      const c2x = cl(sc2x + d2x, 0, W);
+      const c2y = cl(sc2y + d2y, 0, H);
+      return `M${f(s.x)} ${f(s.y)} C${f(c1x)} ${f(c1y)} ${f(c2x)} ${f(c2y)} ${f(e.x)} ${f(e.y)}`;
+    } else {
+      const cp = agent.crossPoint;
+      const t = cp, t2 = t * t, t3 = t2 * t;
+      const mt = 1 - t, mt2 = mt * mt, mt3 = mt2 * mt;
+      const midX = mt3 * aCtr.x + 3 * mt2 * t * sc1x + 3 * mt * t2 * sc2x + t3 * bCtr.x;
+      const midY = mt3 * aCtr.y + 3 * mt2 * t * sc1y + 3 * mt * t2 * sc2y + t3 * bCtr.y;
 
-  // Fill: only when 2+ lines, use first and last line endpoints
-  let fill = '';
-  if (agent.lineCount >= 2 && agent.linePositions.length >= 2) {
-    const first = agent.linePositions[0];
-    const last = agent.linePositions[agent.lineCount - 1];
-    if (first && last) {
-      const a1 = perimeterToXY(agent.pA + (first.tA - 0.5) * widthA / P);
-      const a2 = perimeterToXY(agent.pA + (last.tA - 0.5) * widthA / P);
-      const b1 = perimeterToXY(agent.pB + (first.tB - 0.5) * widthB / P);
-      const b2 = perimeterToXY(agent.pB + (last.tB - 0.5) * widthB / P);
+      const c1ax = s.x + (midX - s.x) * 0.5;
+      const c1ay = s.y + (midY - s.y) * 0.5;
+      const c1bx = midX + (e.x - midX) * 0.5;
+      const c1by = midY + (e.y - midY) * 0.5;
 
-      const hw1f = ((first.tA - 0.5) * widthA) * 0.67 + ((first.tB - 0.5) * widthB) * 0.33;
-      const hw2f = ((first.tA - 0.5) * widthA) * 0.33 + ((first.tB - 0.5) * widthB) * 0.67;
-      const hw1l = ((last.tA - 0.5) * widthA) * 0.67 + ((last.tB - 0.5) * widthB) * 0.33;
-      const hw2l = ((last.tA - 0.5) * widthA) * 0.33 + ((last.tB - 0.5) * widthB) * 0.67;
-
-      const uc1x = cl(sc1x + px * hw1f, 0, W), uc1y = cl(sc1y + py * hw1f, 0, H);
-      const uc2x = cl(sc2x + px * hw2f, 0, W), uc2y = cl(sc2y + py * hw2f, 0, H);
-      const lc1x = cl(sc1x + px * hw1l, 0, W), lc1y = cl(sc1y + py * hw1l, 0, H);
-      const lc2x = cl(sc2x + px * hw2l, 0, W), lc2y = cl(sc2y + py * hw2l, 0, H);
-
-      const pA1 = agent.pA + (first.tA - 0.5) * widthA / P;
-      const pA2 = agent.pA + (last.tA - 0.5) * widthA / P;
-      const aCap = borderTrace(((pA2 % 1) + 1) % 1, ((pA1 % 1) + 1) % 1);
-      const bCap = `L${f(b2.x)} ${f(b2.y)}`;
-
-      fill = [
-        `M${f(a1.x)} ${f(a1.y)}`,
-        `C${f(uc1x)} ${f(uc1y)} ${f(uc2x)} ${f(uc2y)} ${f(b1.x)} ${f(b1.y)}`,
-        bCap,
-        `C${f(lc2x)} ${f(lc2y)} ${f(lc1x)} ${f(lc1y)} ${f(a2.x)} ${f(a2.y)}`,
-        aCap, 'Z',
-      ].join(' ');
+      return `M${f(s.x)} ${f(s.y)} Q${f(c1ax)} ${f(c1ay)} ${f(midX)} ${f(midY)} Q${f(c1bx)} ${f(c1by)} ${f(e.x)} ${f(e.y)}`;
     }
   }
 
-  return { fill, lines };
+  const lines = [
+    buildLine(e1OffA, e1OffB),
+    buildLine(e2OffA, e2OffB),
+  ];
+
+  // Fill: closed shape between the two edges
+  const a1P = agent.pA + e1OffA / P;
+  const a2P = agent.pA + e2OffA / P;
+  const b1P = agent.pB + e1OffB / P;
+  const b2P = agent.pB + e2OffB / P;
+
+  const a1 = perimeterToXY(a1P);
+  const a2 = perimeterToXY(a2P);
+  const b1 = perimeterToXY(b1P);
+  const b2 = perimeterToXY(b2P);
+
+  let fill: string;
+  if (!agent.crossed) {
+    // Displacement vectors for each edge endpoint from spine center
+    const d1Ax = a1.x - aCtr.x, d1Ay = a1.y - aCtr.y;
+    const d1Bx = b1.x - bCtr.x, d1By = b1.y - bCtr.y;
+    const d2Ax = a2.x - aCtr.x, d2Ay = a2.y - aCtr.y;
+    const d2Bx = b2.x - bCtr.x, d2By = b2.y - bCtr.y;
+
+    // Interpolate displacements for fill control points
+    const uc1x = cl(sc1x + d1Ax * 0.67 + d1Bx * 0.33, 0, W);
+    const uc1y = cl(sc1y + d1Ay * 0.67 + d1By * 0.33, 0, H);
+    const uc2x = cl(sc2x + d1Ax * 0.33 + d1Bx * 0.67, 0, W);
+    const uc2y = cl(sc2y + d1Ay * 0.33 + d1By * 0.67, 0, H);
+    const lc1x = cl(sc1x + d2Ax * 0.67 + d2Bx * 0.33, 0, W);
+    const lc1y = cl(sc1y + d2Ay * 0.67 + d2By * 0.33, 0, H);
+    const lc2x = cl(sc2x + d2Ax * 0.33 + d2Bx * 0.67, 0, W);
+    const lc2y = cl(sc2y + d2Ay * 0.33 + d2By * 0.67, 0, H);
+
+    const aCap = borderTrace(((a2P % 1) + 1) % 1, ((a1P % 1) + 1) % 1);
+    const bCap = borderTrace(((b1P % 1) + 1) % 1, ((b2P % 1) + 1) % 1);
+
+    fill = [
+      `M${f(a1.x)} ${f(a1.y)}`,
+      `C${f(uc1x)} ${f(uc1y)} ${f(uc2x)} ${f(uc2y)} ${f(b1.x)} ${f(b1.y)}`,
+      bCap,
+      `C${f(lc2x)} ${f(lc2y)} ${f(lc1x)} ${f(lc1y)} ${f(a2.x)} ${f(a2.y)}`,
+      aCap, 'Z',
+    ].join(' ');
+  } else {
+    const cp = agent.crossPoint;
+    const t = cp, t2 = t * t, t3 = t2 * t;
+    const mt = 1 - t, mt2 = mt * mt, mt3 = mt2 * mt;
+    const midX = mt3 * aCtr.x + 3 * mt2 * t * sc1x + 3 * mt * t2 * sc2x + t3 * bCtr.x;
+    const midY = mt3 * aCtr.y + 3 * mt2 * t * sc1y + 3 * mt * t2 * sc2y + t3 * bCtr.y;
+
+    fill = [
+      `M${f(a1.x)} ${f(a1.y)}`,
+      `Q${f(a1.x + (midX - a1.x) * 0.5)} ${f(a1.y + (midY - a1.y) * 0.5)} ${f(midX)} ${f(midY)}`,
+      `Q${f(midX + (b2.x - midX) * 0.5)} ${f(midY + (b2.y - midY) * 0.5)} ${f(b2.x)} ${f(b2.y)}`,
+      borderTrace(((b2P % 1) + 1) % 1, ((b1P % 1) + 1) % 1),
+      `Q${f(midX + (b1.x - midX) * 0.5)} ${f(midY + (b1.y - midY) * 0.5)} ${f(midX)} ${f(midY)}`,
+      `Q${f(midX + (a2.x - midX) * 0.5)} ${f(midY + (a2.y - midY) * 0.5)} ${f(a2.x)} ${f(a2.y)}`,
+      borderTrace(((a2P % 1) + 1) % 1, ((a1P % 1) + 1) % 1),
+      'Z',
+    ].join(' ');
+  }
+
+  // Stroke widths: average of A/B per edge, scaled to reasonable pixel size
+  const sw1 = Math.max(0.5, (agent.edge1A + agent.edge1B) * P * 0.03);
+  const sw2 = Math.max(0.5, (agent.edge2A + agent.edge2B) * P * 0.03);
+
+  return { fill, lines, strokeWidths: [sw1, sw2] };
 }
 
 // Re-exports
