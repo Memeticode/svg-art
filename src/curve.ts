@@ -1,82 +1,64 @@
-// CurveAgent: state management and SVG path building for ribbon agents.
-// Reads viewport dimensions from viewport.ts. Types from schema.ts.
+// Stroke agent: state management and SVG path building.
+// Each agent has two ends (A, B) with configurable width and line distribution.
 
 import type { Rng } from './rng';
-import type { FlowSample, CurveAgent, FlowEffects } from './schema';
-import { DEFAULT_FLOW_EFFECTS } from './schema';
-import {
-  vp, getPerimeter, edgeOf, perimeterToXY, borderTrace,
-  distToNearestCorner, getInward, EDGE_LENGTH, MIN_INWARD,
-} from './viewport';
+import type { FlowSample, StrokeAgent, FlowEffects } from './schema';
+import { DEFAULT_FLOW_EFFECTS, weightsToPositions } from './schema';
+import { vp, getPerimeter, perimeterToXY, borderTrace, nearestCorner } from './viewport';
 
 export const DEFAULT_SPREAD_RATIO = 0.02;
 export const DEFAULT_SPREAD_MIN_RATIO = 0.001;
 
-function spreadFloor(): number {
-  return Math.max(0.0005, 2 / (getPerimeter() || 1));
-}
-
-function spreadMaxInit(): number {
-  return DEFAULT_SPREAD_RATIO * Math.max(vp.w, vp.h) / (getPerimeter() || 1);
-}
-
-function maxSpreadAt(p: number, spreadRatio: number): number {
-  const edge = edgeOf(p);
-  const edgeMax = spreadRatio * (EDGE_LENGTH[edge] ?? vp.w) / getPerimeter();
-  const cornerDist = distToNearestCorner(p);
-  const TAPER_ZONE = 0.03;
-  if (cornerDist < TAPER_ZONE) {
-    const minEdgeMax = spreadRatio * Math.min(vp.w, vp.h) / getPerimeter();
-    const t = cornerDist / TAPER_ZONE;
-    return minEdgeMax + (edgeMax - minEdgeMax) * t * t;
-  }
-  return edgeMax;
-}
+const TRANSITION_SPEED = 4; // positions per second for line transitions
 
 // ── Agent lifecycle ──
 
-export function createCurve(rng: Rng): CurveAgent {
-  const floor = spreadFloor();
-  const maxInit = spreadMaxInit();
+export function createStroke(rng: Rng, lineCount = 1): StrokeAgent {
+  const P = getPerimeter();
+  const defaultWidth = DEFAULT_SPREAD_RATIO * Math.min(vp.w, vp.h) / P;
   const pA = rng.float(0, 1);
   const pB = (pA + rng.float(0.25, 0.75)) % 1;
+
+  const numGaps = Math.max(0, lineCount - 1);
+  const gapWeights = Array.from({ length: numGaps }, () => 1);
+  const targets = weightsToPositions(lineCount, gapWeights).map(t => ({ tA: t, tB: t }));
+
   return {
     pA, pB,
-    driftA: rng.float(0.003, 0.012) * rng.sign(),
-    driftB: rng.float(0.003, 0.012) * rng.sign(),
-    spreadA: rng.float(floor, maxInit),
-    spreadB: rng.float(floor, maxInit),
-    spreadDriftA: rng.float(0.001, 0.004) * rng.sign(),
-    spreadDriftB: rng.float(0.001, 0.004) * rng.sign(),
+    endA: { width: defaultWidth, weights: [...gapWeights] },
+    endB: { width: defaultWidth, weights: [...gapWeights] },
+    lineCount,
+    driftA: 0,
+    driftB: 0,
+    animate: false,
+    linePositions: targets.map(t => ({ ...t })),
+    lineTargets: targets,
     crossingT: 0,
     crossingTarget: 0,
   };
 }
 
-export function updateCurve(
-  agent: CurveAgent, dt: number,
-  spreadMaxRatio = DEFAULT_SPREAD_RATIO,
-  spreadMinRatio = DEFAULT_SPREAD_MIN_RATIO,
-): void {
-  const P = getPerimeter();
-  const floor = spreadFloor();
+// Keep old name as alias
+export const createCurve = createStroke;
 
-  agent.pA = ((agent.pA + agent.driftA * dt) % 1 + 1) % 1;
-  agent.pB = ((agent.pB + agent.driftB * dt) % 1 + 1) % 1;
+export function updateStroke(agent: StrokeAgent, dt: number): void {
+  // Drift (only when animation is on)
+  if (agent.animate) {
+    agent.pA = ((agent.pA + agent.driftA * dt) % 1 + 1) % 1;
+    agent.pB = ((agent.pB + agent.driftB * dt) % 1 + 1) % 1;
+  }
 
-  agent.spreadA += agent.spreadDriftA * dt;
-  agent.spreadB += agent.spreadDriftB * dt;
+  // Animate line positions toward targets
+  for (let i = 0; i < agent.linePositions.length; i++) {
+    const pos = agent.linePositions[i];
+    const tgt = agent.lineTargets[i];
+    if (!tgt) continue;
+    const speed = TRANSITION_SPEED * dt;
+    pos.tA += Math.sign(tgt.tA - pos.tA) * Math.min(speed, Math.abs(tgt.tA - pos.tA));
+    pos.tB += Math.sign(tgt.tB - pos.tB) * Math.min(speed, Math.abs(tgt.tB - pos.tB));
+  }
 
-  const maxA = maxSpreadAt(agent.pA, spreadMaxRatio);
-  const maxB = maxSpreadAt(agent.pB, spreadMaxRatio);
-  const minA = Math.max(floor, spreadMinRatio * (EDGE_LENGTH[edgeOf(agent.pA)] ?? vp.w) / P);
-  const minB = Math.max(floor, spreadMinRatio * (EDGE_LENGTH[edgeOf(agent.pB)] ?? vp.w) / P);
-
-  if (agent.spreadA > maxA || agent.spreadA < minA) agent.spreadDriftA *= -1;
-  if (agent.spreadB > maxB || agent.spreadB < minB) agent.spreadDriftB *= -1;
-  agent.spreadA = Math.max(minA, Math.min(maxA, agent.spreadA));
-  agent.spreadB = Math.max(minB, Math.min(maxB, agent.spreadB));
-
+  // Crossing animation
   const crossingSpeed = 3 * dt;
   if (agent.crossingT < agent.crossingTarget) {
     agent.crossingT = Math.min(agent.crossingTarget, agent.crossingT + crossingSpeed);
@@ -85,33 +67,65 @@ export function updateCurve(
   }
 }
 
+// Keep old name as alias
+export const updateCurve = updateStroke;
+
+/** Recompute line targets from current weights. Call when weights or lineCount change. */
+export function recomputeTargets(agent: StrokeAgent) {
+  // Gap weights: N-1 gaps for N lines
+  const numGaps = Math.max(0, agent.lineCount - 1);
+
+  // Sync weight arrays to gap count
+  while (agent.endA.weights.length < numGaps) agent.endA.weights.push(1);
+  while (agent.endA.weights.length > numGaps) agent.endA.weights.pop();
+  while (agent.endB.weights.length < numGaps) agent.endB.weights.push(1);
+  while (agent.endB.weights.length > numGaps) agent.endB.weights.pop();
+
+  const posA = weightsToPositions(agent.lineCount, agent.endA.weights);
+  const posB = weightsToPositions(agent.lineCount, agent.endB.weights);
+
+  // Resize position arrays
+  while (agent.linePositions.length < agent.lineCount) {
+    const i = agent.linePositions.length;
+    agent.linePositions.push({ tA: posA[i] ?? 0.5, tB: posB[i] ?? 0.5 });
+  }
+  while (agent.linePositions.length > agent.lineCount) {
+    agent.linePositions.pop();
+  }
+
+  agent.lineTargets = [];
+  for (let i = 0; i < agent.lineCount; i++) {
+    agent.lineTargets.push({ tA: posA[i] ?? 0.5, tB: posB[i] ?? 0.5 });
+  }
+}
+
 // ── Path building ──
 
 export interface RibbonPaths {
   fill: string;
-  upper: string;
-  lower: string;
+  lines: string[];
 }
 
-export function buildPath(agent: CurveAgent, flow: FlowSample, effects: FlowEffects = DEFAULT_FLOW_EFFECTS): RibbonPaths {
-  const W = vp.w, H = vp.h, P = getPerimeter();
+export function buildPath(agent: StrokeAgent, flow: FlowSample, effects: FlowEffects = DEFAULT_FLOW_EFFECTS): RibbonPaths {
+  const W = vp.w, H = vp.h;
 
   const aCtr = perimeterToXY(agent.pA);
   const bCtr = perimeterToXY(agent.pB);
 
-  const a1 = perimeterToXY(agent.pA - agent.spreadA / 2);
-  const a2 = perimeterToXY(agent.pA + agent.spreadA / 2);
-  const bRaw1 = perimeterToXY(agent.pB - agent.spreadB / 2);
-  const bRaw2 = perimeterToXY(agent.pB + agent.spreadB / 2);
-  const ct = agent.crossingT;
-  const b1 = { x: bRaw1.x + (bRaw2.x - bRaw1.x) * ct, y: bRaw1.y + (bRaw2.y - bRaw1.y) * ct };
-  const b2 = { x: bRaw2.x + (bRaw1.x - bRaw2.x) * ct, y: bRaw2.y + (bRaw1.y - bRaw2.y) * ct };
-
+  // Spine direction
   const dx = bCtr.x - aCtr.x;
   const dy = bCtr.y - aCtr.y;
   const len = Math.sqrt(dx * dx + dy * dy) || 1;
   const px = -dy / len;
   const py = dx / len;
+
+  // Flow influence on control points
+  const dirMag = effects.direction ? flow.direction.magnitude : 0;
+  const dirVx = effects.direction ? Math.cos(flow.direction.angle) * dirMag : 0;
+  const dirVy = effects.direction ? Math.sin(flow.direction.angle) * dirMag : 0;
+  const curlMag = effects.curl ? flow.curl.magnitude : 0;
+  const curlVx = effects.curl ? Math.cos(flow.curl.angle) * curlMag : 0;
+  const curlVy = effects.curl ? Math.sin(flow.curl.angle) * curlMag : 0;
 
   const perimDist = Math.min(
     ((agent.pB - agent.pA) % 1 + 1) % 1,
@@ -120,80 +134,101 @@ export function buildPath(agent: CurveAgent, flow: FlowSample, effects: FlowEffe
   const proximityDampen = perimDist < 0.1 ? perimDist / 0.1 : 1;
   const k = len * 0.4 * proximityDampen;
 
-  // Direction vector drives primary curvature (when enabled)
-  const dirMag = effects.direction ? flow.direction.magnitude : 0;
-  const dirVx = effects.direction ? Math.cos(flow.direction.angle) * dirMag : 0;
-  const dirVy = effects.direction ? Math.sin(flow.direction.angle) * dirMag : 0;
-
-  // Curl vector drives secondary curvature offset (when enabled)
-  const curlMag = effects.curl ? flow.curl.magnitude : 0;
-  const curlVx = effects.curl ? Math.cos(flow.curl.angle) * curlMag : 0;
-  const curlVy = effects.curl ? Math.sin(flow.curl.angle) * curlMag : 0;
-
+  // Spine control points
   let sc1x = aCtr.x + dx * 0.33 + px * dirMag * k + dirVx * k * 0.3;
   let sc1y = aCtr.y + dy * 0.33 + py * dirMag * k + dirVy * k * 0.3;
   let sc2x = aCtr.x + dx * 0.66 - px * curlMag * k * 0.5 + curlVx * k * 0.2;
   let sc2y = aCtr.y + dy * 0.66 - py * curlMag * k * 0.5 + curlVy * k * 0.2;
 
-  const eA = edgeOf(agent.pA);
-  const eB = edgeOf(agent.pB);
-  if (eA === eB) {
-    const inward = getInward(eA);
-    sc1x += inward.x * MIN_INWARD;
-    sc1y += inward.y * MIN_INWARD;
-    sc2x += inward.x * MIN_INWARD;
-    sc2y += inward.y * MIN_INWARD;
-  }
-
   const cl = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
   sc1x = cl(sc1x, 0, W); sc1y = cl(sc1y, 0, H);
   sc2x = cl(sc2x, 0, W); sc2y = cl(sc2y, 0, H);
 
-  const spreadAPx = Math.max(1, agent.spreadA * P / 2);
-  const spreadBPx = Math.max(1, agent.spreadB * P / 2);
-  const hw1 = spreadAPx * 0.67 + spreadBPx * 0.33;
-  const hw2 = spreadAPx * 0.33 + spreadBPx * 0.67;
-
-  const uc1x = cl(sc1x + px * hw1, 0, W);
-  const uc1y = cl(sc1y + py * hw1, 0, H);
-  const lc1x = cl(sc1x - px * hw1, 0, W);
-  const lc1y = cl(sc1y - py * hw1, 0, H);
-
-  const cp2Sign = 1 - 2 * ct;
-  const uc2x = cl(sc2x + px * hw2 * cp2Sign, 0, W);
-  const uc2y = cl(sc2y + py * hw2 * cp2Sign, 0, H);
-  const lc2x = cl(sc2x - px * hw2 * cp2Sign, 0, W);
-  const lc2y = cl(sc2y - py * hw2 * cp2Sign, 0, H);
-
-  const f = (n: number) => n.toFixed(1);
-
-  const pA1 = ((agent.pA - agent.spreadA / 2) % 1 + 1) % 1;
-  const pA2 = ((agent.pA + agent.spreadA / 2) % 1 + 1) % 1;
-  const aCap = borderTrace(pA2, pA1);
-
-  let bCap: string;
-  if (ct < 0.01) {
-    const pBr1 = ((agent.pB - agent.spreadB / 2) % 1 + 1) % 1;
-    const pBr2 = ((agent.pB + agent.spreadB / 2) % 1 + 1) % 1;
-    bCap = borderTrace(pBr1, pBr2);
-  } else {
-    bCap = `L${f(b2.x)} ${f(b2.y)}`;
+  // Corner blending
+  const CORNER_ZONE = 0.04;
+  const cornerA = nearestCorner(agent.pA);
+  if (cornerA.dist < CORNER_ZONE) {
+    const blend = (1 - cornerA.dist / CORNER_ZONE) ** 2;
+    sc1x += (cornerA.x - sc1x) * blend;
+    sc1y += (cornerA.y - sc1y) * blend;
+  }
+  const cornerB = nearestCorner(agent.pB);
+  if (cornerB.dist < CORNER_ZONE) {
+    const blend = (1 - cornerB.dist / CORNER_ZONE) ** 2;
+    sc2x += (cornerB.x - sc2x) * blend;
+    sc2y += (cornerB.y - sc2y) * blend;
   }
 
-  const fill = [
-    `M${f(a1.x)} ${f(a1.y)}`,
-    `C${f(uc1x)} ${f(uc1y)} ${f(uc2x)} ${f(uc2y)} ${f(b1.x)} ${f(b1.y)}`,
-    bCap,
-    `C${f(lc2x)} ${f(lc2y)} ${f(lc1x)} ${f(lc1y)} ${f(a2.x)} ${f(a2.y)}`,
-    aCap,
-    'Z',
-  ].join(' ');
+  const P = getPerimeter();
+  const widthA = agent.endA.width * P;
+  const widthB = agent.endB.width * P;
+  const f = (n: number) => n.toFixed(1);
 
-  const upper = `M${f(a1.x)} ${f(a1.y)} C${f(uc1x)} ${f(uc1y)} ${f(uc2x)} ${f(uc2y)} ${f(b1.x)} ${f(b1.y)}`;
-  const lower = `M${f(a2.x)} ${f(a2.y)} C${f(lc1x)} ${f(lc1y)} ${f(lc2x)} ${f(lc2y)} ${f(b2.x)} ${f(b2.y)}`;
+  // Build per-line paths
+  const lines: string[] = [];
+  for (let i = 0; i < agent.lineCount; i++) {
+    const pos = agent.linePositions[i];
+    if (!pos) continue;
 
-  return { fill, upper, lower };
+    // Position within width: 0..1 mapped to -0.5..+0.5 offset
+    const offsetA = (pos.tA - 0.5) * widthA;
+    const offsetB = (pos.tB - 0.5) * widthB;
+
+    // Start and end points: offset from center along perimeter
+    const sP = agent.pA + offsetA / P;
+    const eP = agent.pB + offsetB / P;
+    const s = perimeterToXY(sP);
+    const e = perimeterToXY(eP);
+
+    // Control points: offset from spine proportionally
+    const hw1 = offsetA * 0.67 + offsetB * 0.33;
+    const hw2 = offsetA * 0.33 + offsetB * 0.67;
+    const c1x = cl(sc1x + px * hw1, 0, W);
+    const c1y = cl(sc1y + py * hw1, 0, H);
+    const c2x = cl(sc2x + px * hw2, 0, W);
+    const c2y = cl(sc2y + py * hw2, 0, H);
+
+    lines.push(`M${f(s.x)} ${f(s.y)} C${f(c1x)} ${f(c1y)} ${f(c2x)} ${f(c2y)} ${f(e.x)} ${f(e.y)}`);
+  }
+
+  // Fill: only when 2+ lines, use first and last line endpoints
+  let fill = '';
+  if (agent.lineCount >= 2 && agent.linePositions.length >= 2) {
+    const first = agent.linePositions[0];
+    const last = agent.linePositions[agent.lineCount - 1];
+    if (first && last) {
+      const a1 = perimeterToXY(agent.pA + (first.tA - 0.5) * widthA / P);
+      const a2 = perimeterToXY(agent.pA + (last.tA - 0.5) * widthA / P);
+      const b1 = perimeterToXY(agent.pB + (first.tB - 0.5) * widthB / P);
+      const b2 = perimeterToXY(agent.pB + (last.tB - 0.5) * widthB / P);
+
+      const hw1f = ((first.tA - 0.5) * widthA) * 0.67 + ((first.tB - 0.5) * widthB) * 0.33;
+      const hw2f = ((first.tA - 0.5) * widthA) * 0.33 + ((first.tB - 0.5) * widthB) * 0.67;
+      const hw1l = ((last.tA - 0.5) * widthA) * 0.67 + ((last.tB - 0.5) * widthB) * 0.33;
+      const hw2l = ((last.tA - 0.5) * widthA) * 0.33 + ((last.tB - 0.5) * widthB) * 0.67;
+
+      const uc1x = cl(sc1x + px * hw1f, 0, W), uc1y = cl(sc1y + py * hw1f, 0, H);
+      const uc2x = cl(sc2x + px * hw2f, 0, W), uc2y = cl(sc2y + py * hw2f, 0, H);
+      const lc1x = cl(sc1x + px * hw1l, 0, W), lc1y = cl(sc1y + py * hw1l, 0, H);
+      const lc2x = cl(sc2x + px * hw2l, 0, W), lc2y = cl(sc2y + py * hw2l, 0, H);
+
+      const pA1 = agent.pA + (first.tA - 0.5) * widthA / P;
+      const pA2 = agent.pA + (last.tA - 0.5) * widthA / P;
+      const aCap = borderTrace(((pA2 % 1) + 1) % 1, ((pA1 % 1) + 1) % 1);
+      const bCap = `L${f(b2.x)} ${f(b2.y)}`;
+
+      fill = [
+        `M${f(a1.x)} ${f(a1.y)}`,
+        `C${f(uc1x)} ${f(uc1y)} ${f(uc2x)} ${f(uc2y)} ${f(b1.x)} ${f(b1.y)}`,
+        bCap,
+        `C${f(lc2x)} ${f(lc2y)} ${f(lc1x)} ${f(lc1y)} ${f(a2.x)} ${f(a2.y)}`,
+        aCap, 'Z',
+      ].join(' ');
+    }
+  }
+
+  return { fill, lines };
 }
 
-// Re-export for convenience
+// Re-exports
 export { perimeterToXY } from './viewport';

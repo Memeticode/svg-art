@@ -64,6 +64,49 @@ export function perimeterToXY(p: number): { x: number; y: number } {
   return { x: 0, y: vp.h - (d - 2 * vp.w - vp.h) };
 }
 
+/** Convert a pixel coordinate to the nearest perimeter position (0..1).
+ *  Snaps to whichever border edge is closest. */
+export function xyToPerimeter(x: number, y: number): number {
+  // Distance to each edge
+  const dTop = y;
+  const dRight = vp.w - x;
+  const dBottom = vp.h - y;
+  const dLeft = x;
+  const minDist = Math.min(dTop, dRight, dBottom, dLeft);
+
+  const P = PERIMETER;
+  if (minDist === dTop) {
+    // Top edge: x maps to 0..W along perimeter
+    return Math.max(0, Math.min(1, (x / P)));
+  } else if (minDist === dRight) {
+    // Right edge: y maps to W..W+H
+    return Math.max(0, Math.min(1, ((vp.w + y) / P)));
+  } else if (minDist === dBottom) {
+    // Bottom edge: x maps reversed from W+H..2W+H
+    return Math.max(0, Math.min(1, ((vp.w + vp.h + (vp.w - x)) / P)));
+  } else {
+    // Left edge: y maps reversed from 2W+H..2W+2H
+    return Math.max(0, Math.min(1, ((2 * vp.w + vp.h + (vp.h - y)) / P)));
+  }
+}
+
+/** Get the nearest corner's perimeter position and pixel coords for a given p. */
+export function nearestCorner(p: number): { p: number; x: number; y: number; dist: number } {
+  p = ((p % 1) + 1) % 1;
+  const cornerP = [0, TOP_END, RIGHT_END, BOTTOM_END];
+  let bestIdx = 0;
+  let bestDist = 1;
+  for (let i = 0; i < 4; i++) {
+    const d = Math.min(
+      Math.abs(p - cornerP[i]),
+      Math.abs(p - cornerP[i] + 1),
+      Math.abs(p - cornerP[i] - 1),
+    );
+    if (d < bestDist) { bestDist = d; bestIdx = i; }
+  }
+  return { p: cornerP[bestIdx], x: CORNER_XY[bestIdx].x, y: CORNER_XY[bestIdx].y, dist: bestDist };
+}
+
 export function distToNearestCorner(p: number): number {
   p = ((p % 1) + 1) % 1;
   let minDist = 1;

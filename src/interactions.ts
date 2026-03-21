@@ -39,11 +39,11 @@ function applyToTarget(
       break;
     }
     case 'spread': {
-      // Magnitude modulates spread; angle determines which end is affected more
+      // Magnitude modulates end widths; angle biases A vs B
       const delta = vec.magnitude * strength * 0.001 * dt;
-      const bias = Math.cos(vec.angle); // -1..1: biases A vs B
-      agent.spreadA += delta * (1 + bias) * 0.5;
-      agent.spreadB += delta * (1 - bias) * 0.5;
+      const bias = Math.cos(vec.angle);
+      agent.endA.width += delta * (1 + bias) * 0.5;
+      agent.endB.width += delta * (1 - bias) * 0.5;
       break;
     }
     case 'curvature': {
