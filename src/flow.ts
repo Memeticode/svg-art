@@ -1,46 +1,77 @@
-// Flow field: noise-based direction, magnitude, and curl
+// Flow field: multi-component field where each component is a vector (angle + magnitude).
+// Each component has independent noise channels, spatial frequencies, and time scales.
 
 import type { Rng } from './rng';
-import { createNoise } from './noise';
+import type { FlowSample } from './schema';
+import { createNoise, type NoiseGenerator } from './noise';
 
 const TAU = Math.PI * 2;
-
-export interface FlowSample {
-  angle: number;
-  magnitude: number;
-  vx: number;
-  vy: number;
-  curl: number;
-}
 
 export interface FlowField {
   sample(xNorm: number, yNorm: number, timeSec: number): FlowSample;
 }
 
-export function createFlowField(rng: Rng): FlowField {
-  const noiseAngle = createNoise(rng.fork('angle'));
-  const noiseMag = createNoise(rng.fork('mag'));
+interface ComponentConfig {
+  angleNoise: NoiseGenerator;
+  magNoise: NoiseGenerator;
+  freq: number;
+  timeScale: number;
+  magScale: number; // output magnitude multiplier
+}
 
-  const freq = 1.8;
-  const ts = 0.04;
+function sampleComponent(
+  cfg: ComponentConfig,
+  xNorm: number, yNorm: number, timeSec: number,
+): { angle: number; magnitude: number } {
+  const t = timeSec * cfg.timeScale;
+  const raw = cfg.angleNoise.warp(
+    xNorm * cfg.freq + t * 0.3,
+    yNorm * cfg.freq + t * 0.2,
+    3, 2.0, 0.5,
+  );
+  const angle = raw * TAU;
+
+  const magRaw = cfg.magNoise.warp(
+    xNorm * cfg.freq * 0.7 + t * 0.15,
+    yNorm * cfg.freq * 0.7 - t * 0.1,
+    2, 2.0, 0.5,
+  );
+  const magnitude = (magRaw * 0.5 + 0.5) * cfg.magScale;
+
+  return { angle, magnitude };
+}
+
+export function createFlowField(rng: Rng): FlowField {
+  // Each component gets independent noise for angle and magnitude
+  const direction: ComponentConfig = {
+    angleNoise: createNoise(rng.fork('dir-a')),
+    magNoise: createNoise(rng.fork('dir-m')),
+    freq: 1.8,
+    timeScale: 0.04,
+    magScale: 1.4,
+  };
+
+  const curl: ComponentConfig = {
+    angleNoise: createNoise(rng.fork('curl-a')),
+    magNoise: createNoise(rng.fork('curl-m')),
+    freq: 1.5,
+    timeScale: 0.03,
+    magScale: 1.0,
+  };
+
+  const compression: ComponentConfig = {
+    angleNoise: createNoise(rng.fork('comp-a')),
+    magNoise: createNoise(rng.fork('comp-m')),
+    freq: 0.9,
+    timeScale: 0.02,
+    magScale: 1.0,
+  };
 
   function sample(xNorm: number, yNorm: number, timeSec: number): FlowSample {
-    const t = timeSec * ts;
-    const raw = noiseAngle.warp(xNorm * freq + t * 0.3, yNorm * freq + t * 0.2, 3, 2.0, 0.5);
-    const angle = raw * TAU;
-
-    const magRaw = noiseMag.warp(xNorm * freq * 0.7 + t * 0.15, yNorm * freq * 0.7 - t * 0.1, 2, 2.0, 0.5);
-    const magnitude = (magRaw * 0.5 + 0.5) * 1.4;
-
-    const eps = 0.01;
-    const dx = noiseAngle.warp((xNorm + eps) * freq + t * 0.3, yNorm * freq + t * 0.2, 3, 2.0, 0.5);
-    const dy = noiseAngle.warp(xNorm * freq + t * 0.3, (yNorm + eps) * freq + t * 0.2, 3, 2.0, 0.5);
-    const curl = (dy - raw) / eps - (dx - raw) / eps;
-
     return {
-      angle, magnitude, curl,
-      vx: Math.cos(angle) * magnitude,
-      vy: Math.sin(angle) * magnitude,
+      direction: sampleComponent(direction, xNorm, yNorm, timeSec),
+      curl: sampleComponent(curl, xNorm, yNorm, timeSec),
+      compression: sampleComponent(compression, xNorm, yNorm, timeSec),
     };
   }
 

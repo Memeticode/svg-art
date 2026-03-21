@@ -12,8 +12,17 @@ dist/
 .env.*
 !.env.example
 
-# Editor
-.vscode-test
+# Editor / IDE
+.vscode/
+.vscode-test/
+*.swp
+*.swo
+*~
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
 
 # TypeScript
 *.tsbuildinfo
@@ -21,9 +30,11 @@ dist/
 # Vite
 vite.config.ts.timestamp-*
 
-# Project-specific
+# Claude
 .claude/
-geometric-interior-living-field/completed
 
-# Screenshots (keep changelog only)
+# Legacy project docs
+geometric-interior-living-field/
+
+# Screenshots
 screenshots/*.png
